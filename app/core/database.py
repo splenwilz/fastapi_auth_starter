@@ -64,14 +64,23 @@ async def get_db() -> AsyncSession:
     """
     Dependency function that provides a database session
     Automatically closes the session after the request completes
+    
+    For serverless environments (Vercel), this ensures proper transaction handling:
+    - Commits on success
+    - Rolls back on error
+    - Always closes the session
     """
     async with async_session_maker() as session:
         try:
             yield session
-            await session.commit()  # Commit transaction on success
+            # Commit transaction on success
+            # This commits all changes made during the request
+            await session.commit()
         except Exception:
-            await session.rollback()  # Rollback on error
+            # Rollback on any exception to maintain data consistency
+            await session.rollback()
             raise
         finally:
-            await session.close()  # Always close the session
+            # Always close the session to release connection back to pool
+            await session.close()
 

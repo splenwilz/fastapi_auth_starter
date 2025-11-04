@@ -80,6 +80,9 @@ class TaskService:
             
         Returns:
             Created Task object
+            
+        Note: Don't commit here - let the get_db() dependency handle commit/rollback
+        Reference: https://docs.sqlalchemy.org/en/20/orm/session_basics.html#committing
         """
         # Create new task instance from schema data
         task = Task(
@@ -88,10 +91,11 @@ class TaskService:
             completed=task_data.completed
         )
         
-        # Add to session and commit
+        # Add to session and flush (gets ID without committing)
+        # The get_db() dependency will handle the commit
         db.add(task)
-        await db.commit()  # Commit the transaction
-        await db.refresh(task)  # Refresh to get database-generated values (timestamps, id)
+        await db.flush()  # Flush to get database-generated ID (without committing)
+        await db.refresh(task)  # Refresh to get all database-generated values (timestamps)
         
         return task
     
@@ -122,8 +126,9 @@ class TaskService:
         for field, value in update_data.items():
             setattr(task, field, value)
         
-        await db.commit()
-        await db.refresh(task)
+        # Don't commit here - let the get_db() dependency handle commit/rollback
+        await db.flush()  # Flush changes to get updated values
+        await db.refresh(task)  # Refresh to get database-generated values (updated_at)
         
         return task
     
@@ -144,10 +149,10 @@ class TaskService:
         if not task:
             return False
         
-        # Delete task using SQLAlchemy delete statement
-        # Reference: https://docs.sqlalchemy.org/en/20/tutorial/data_delete.html
+        # Delete task
+        # Don't commit here - let the get_db() dependency handle commit/rollback
         await db.delete(task)
-        await db.commit()
+        # No need to flush for delete - commit will handle it
         
         return True
 
