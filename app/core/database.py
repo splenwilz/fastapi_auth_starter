@@ -9,15 +9,31 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 
+# Validate DATABASE_URL is set
+if not settings.DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is not set. "
+        "Please set it in your .env file or Vercel environment variables."
+    )
+
 # Create async engine for PostgreSQL
-# pool_pre_ping=True: Validates connections before use (prevents stale connections)
+# Optimized for serverless (Vercel) - smaller pool, faster timeouts
 # Reference: https://docs.sqlalchemy.org/en/20/core/pooling.html#disconnect-handling-pessimistic
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,  # Set to True for SQL query logging (useful for debugging)
-    pool_pre_ping=True,  # Test connections before using them
-    pool_size=5,  # Number of connections to maintain in the pool
-    max_overflow=10,  # Maximum number of connections beyond pool_size
+    pool_pre_ping=True,  # Test connections before using them (important for serverless)
+    pool_size=1,  # Smaller pool for serverless (Vercel functions are stateless)
+    max_overflow=0,  # No overflow for serverless
+    pool_recycle=300,  # Recycle connections after 5 minutes
+    pool_timeout=20,  # Timeout for getting connection from pool
+    connect_args={
+        "server_settings": {
+            "application_name": "fastapi_auth_starter",
+        },
+        "command_timeout": 30,  # Increased timeout for network latency
+        "timeout": 30,  # Connection timeout
+    },
 )
 
 

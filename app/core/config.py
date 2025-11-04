@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     # PostgreSQL connection string format: postgresql+asyncpg://user:password@host:port/dbname
     # Reference: https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls
     # Set in .env file or Vercel environment variables
+    # Note: Special characters in password must be URL-encoded (e.g., ! = %21)
     DATABASE_URL: str = Field(
-        default="",
+        ...,
         description="PostgreSQL database URL. Must be set via environment variable."
     )
     
