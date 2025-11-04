@@ -32,6 +32,8 @@ if config.config_file_name is not None:
 if not config.get_main_option("sqlalchemy.url"):
     # Convert asyncpg URL to psycopg2 URL (sync driver for migrations)
     db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+    # Escape % for ConfigParser (double % to prevent interpolation)
+    db_url = db_url.replace("%", "%%")
     config.set_main_option("sqlalchemy.url", db_url)
 
 # Set target_metadata for autogenerate support
