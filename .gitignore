@@ -15,3 +15,6 @@ wheels/
 
 # Keep .env.example as a template
 !.env.example
+
+# Vercel
+.vercel

@@ -38,7 +38,7 @@ fastapi_auth_starter/
 
 ## Prerequisites
 
-- Python 3.13+
+- Python 3.12+ (3.13 for local dev, 3.12 for Vercel deployment)
 - [uv](https://github.com/astral-sh/uv) package manager
 - PostgreSQL database (local or remote)
 
@@ -209,12 +209,37 @@ FastAPI's dependency injection is used throughout:
 - Configuration via `settings` object
 - Custom dependencies in `app/core/dependencies.py` (create as needed)
 
+## Deployment
+
+### Vercel Deployment
+
+1. **Install Dev Dependencies Locally:**
+   ```bash
+   uv sync  # Installs all dependencies including dev
+   ```
+
+2. **Set Environment Variables in Vercel:**
+   - Go to your project settings in Vercel
+   - Add `DATABASE_URL` environment variable with your PostgreSQL connection string
+   - Format: `postgresql+asyncpg://user:password@host:port/database`
+
+3. **Deploy:**
+   ```bash
+   vercel --prod
+   ```
+
+**Note:** 
+- Runtime dependencies don't include `psycopg2-binary` or `alembic` (only needed for local migrations)
+- Python 3.12 is used (Vercel doesn't support 3.13 yet)
+- Make sure to run migrations on your database before deploying
+
 ## References
 
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [SQLAlchemy Async Documentation](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
 - [Alembic Documentation](https://alembic.sqlalchemy.org/)
 - [uv Documentation](https://github.com/astral-sh/uv)
+- [Vercel Python Documentation](https://vercel.com/docs/functions/serverless-functions/runtimes/python)
 
 ## License
 

@@ -1,9 +1,10 @@
 """
 Application configuration settings
 Handles environment variables and configuration management
-All configuration values should be set in .env file
+All configuration values should be set in .env file or environment variables
 Reference: https://fastapi.tiangolo.com/advanced/settings/
 """
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -23,8 +24,11 @@ class Settings(BaseSettings):
     # Database Configuration
     # PostgreSQL connection string format: postgresql+asyncpg://user:password@host:port/dbname
     # Reference: https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls
-    # MUST be set in .env file - no default to force explicit configuration
-    DATABASE_URL: str
+    # Set in .env file or Vercel environment variables
+    DATABASE_URL: str = Field(
+        default="",
+        description="PostgreSQL database URL. Must be set via environment variable."
+    )
     
     # Alembic Configuration
     # Used for database migrations
