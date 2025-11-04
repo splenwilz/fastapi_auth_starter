@@ -5,6 +5,7 @@ Reference: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html
 """
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -17,22 +18,25 @@ if not settings.DATABASE_URL:
     )
 
 # Create async engine for PostgreSQL
-# Optimized for serverless (Vercel) - smaller pool, faster timeouts
-# Reference: https://docs.sqlalchemy.org/en/20/core/pooling.html#disconnect-handling-pessimistic
+# Using NullPool for serverless (Vercel) - each request gets a fresh connection
+# Connection pooling doesn't work well in serverless environments where functions
+# are isolated and can be terminated/cold-started
+# Reference: https://docs.sqlalchemy.org/en/20/core/pooling.html#switching-pool-implementations
+# Reference: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-multiple-asyncio-event-loops
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,  # Set to True for SQL query logging (useful for debugging)
-    pool_pre_ping=True,  # Test connections before using them (important for serverless)
-    pool_size=1,  # Smaller pool for serverless (Vercel functions are stateless)
-    max_overflow=0,  # No overflow for serverless
-    pool_recycle=300,  # Recycle connections after 5 minutes
-    pool_timeout=20,  # Timeout for getting connection from pool
+    poolclass=NullPool,  # No connection pooling - each request gets a new connection
+    # This is critical for serverless environments where connection reuse
+    # across function invocations causes connection termination errors
+    # Reference: https://docs.sqlalchemy.org/en/20/core/pooling.html#disabling-pooling-using-nullpool
     connect_args={
+        # asyncpg-specific connection arguments
+        # Reference: https://magicstack.github.io/asyncpg/current/api/index.html#connection
+        "command_timeout": 60,  # Increased timeout for serverless network latency
         "server_settings": {
             "application_name": "fastapi_auth_starter",
         },
-        "command_timeout": 30,  # Increased timeout for network latency
-        "timeout": 30,  # Connection timeout
     },
 )
 
@@ -44,6 +48,8 @@ async_session_maker = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,  # Keep objects accessible after commit
+    # This is important for serverless - objects remain accessible after commit
+    # allowing timestamps to be read even if not refreshed
     autocommit=False,
     autoflush=False,
 )
@@ -75,12 +81,26 @@ async def get_db() -> AsyncSession:
             yield session
             # Commit transaction on success
             # This commits all changes made during the request
+            # In serverless, this must complete before the function terminates
             await session.commit()
-        except Exception:
+        except Exception as e:
             # Rollback on any exception to maintain data consistency
-            await session.rollback()
+            try:
+                await session.rollback()
+            except Exception:
+                # If rollback fails, connection is likely already closed
+                # This can happen in serverless when connections are terminated
+                pass
+            # Re-raise the original exception so FastAPI can handle it properly
             raise
         finally:
-            # Always close the session to release connection back to pool
-            await session.close()
+            # Always close the session to release connection
+            # With NullPool, this closes the connection completely
+            # In serverless, this is critical to prevent connection leaks
+            try:
+                await session.close()
+            except Exception:
+                # If close fails, connection is likely already closed or terminated
+                # This is acceptable - we're in cleanup anyway
+                pass
 

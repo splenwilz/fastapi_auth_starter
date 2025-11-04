@@ -91,12 +91,18 @@ class TaskService:
             completed=task_data.completed
         )
         
-        # Add to session and flush (gets ID without committing)
-        # The get_db() dependency will handle the commit
+        # Add to session
         db.add(task)
-        await db.flush()  # Flush to get database-generated ID (without committing)
-        await db.refresh(task)  # Refresh to get all database-generated values (timestamps)
+        # Flush to get database-generated ID (without committing)
+        # This sends the INSERT to the database and gets the ID back
+        # With server_default, timestamps are set by the database
+        await db.flush()
+        # After flush, task.id is available
+        # For timestamps, we'll let the response handle it
+        # The database has the values, but we don't refresh to avoid connection issues
         
+        # Note: Commit will be handled by get_db() dependency
+        # Timestamps will be None initially but the database has the correct values
         return task
     
     @staticmethod
@@ -127,8 +133,9 @@ class TaskService:
             setattr(task, field, value)
         
         # Don't commit here - let the get_db() dependency handle commit/rollback
-        await db.flush()  # Flush changes to get updated values
-        await db.refresh(task)  # Refresh to get database-generated values (updated_at)
+        await db.flush()  # Flush changes to database (without committing)
+        # Don't refresh here - timestamps will be available after commit
+        # In serverless, refreshing before commit can cause connection issues
         
         return task
     

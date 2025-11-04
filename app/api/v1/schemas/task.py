@@ -43,8 +43,11 @@ class TaskResponse(TaskBase):
     Includes all fields from TaskBase plus database-generated fields
     """
     id: int = Field(..., description="Task ID")
-    created_at: datetime = Field(..., description="Timestamp when task was created")
-    updated_at: datetime = Field(..., description="Timestamp when task was last updated")
+    # Timestamps are optional because they may not be immediately available
+    # after flush() in serverless environments (database sets them, but asyncpg
+    # may not return them without refresh which can cause connection issues)
+    created_at: Optional[datetime] = Field(None, description="Timestamp when task was created")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp when task was last updated")
     
     class Config:
         """

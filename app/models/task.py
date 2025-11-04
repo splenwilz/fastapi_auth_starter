@@ -35,16 +35,19 @@ class Task(Base):
     completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Timestamps
+    # Using server_default with func.now() for automatic timestamp generation
+    # These are set by PostgreSQL on INSERT/UPDATE
+    # Reference: https://docs.sqlalchemy.org/en/20/core/defaults.html#server-side-defaults
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),  # Server-side default for creation time
-        nullable=False
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(),  # Server-side default
+        server_default=func.now(),  # Server-side default for initial value
         onupdate=func.now(),  # Update on modification
-        nullable=False
+        nullable=False,
     )
     
     def __repr__(self) -> str:
