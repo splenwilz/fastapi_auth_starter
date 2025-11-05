@@ -4,7 +4,7 @@ Handles environment variables and configuration management
 All configuration values should be set in .env file or environment variables
 Reference: https://fastapi.tiangolo.com/advanced/settings/
 """
-from pydantic import Field
+from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -30,16 +30,31 @@ class Settings(BaseSettings):
         ...,
         description="PostgreSQL database URL. Must be set via environment variable."
     )
-    
+
+    # WorkOS Configuration
+    # WorkOS API key for user management
+    # Reference: https://workos.com/docs/reference/api-reference/user-management
+    WORKOS_API_KEY: str = Field(
+        ...,
+        description="WorkOS API key. Must be set via environment variable."
+    )
+    WORKOS_CLIENT_ID: str = Field(
+        ...,
+        description="WorkOS client ID. Must be set via environment variable."
+    )
     # Alembic Configuration
     # Used for database migrations
     # Reference: https://alembic.sqlalchemy.org/en/latest/tutorial.html
     ALEMBIC_CONFIG: str = "alembic.ini"
     
-    class Config:
-        """Pydantic configuration"""
-        env_file = ".env"  # Load from .env file (required)
-        case_sensitive = True  # Environment variable names are case-sensitive
+    # Pydantic v2 configuration
+    # Reference: https://docs.pydantic.dev/latest/api/config/
+    model_config = ConfigDict(
+        env_file=".env",  # Load from .env file (required)
+        case_sensitive=True,  # Environment variable names are case-sensitive
+        extra="ignore",  # Ignore extra environment variables not defined in this class
+        # This allows additional env vars (like WorkOS config) to exist without causing validation errors
+    )
 
 
 # Global settings instance

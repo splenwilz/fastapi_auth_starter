@@ -4,7 +4,7 @@ SQLAlchemy model for tasks
 Reference: https://docs.sqlalchemy.org/en/20/orm/declarative_styles.html
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, func
+from sqlalchemy import Integer, String, Boolean, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

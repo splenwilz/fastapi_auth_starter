@@ -15,8 +15,7 @@ from app.core.database import Base
 
 # Import all models here so Alembic can detect them for autogenerate
 # As models are added, import them here
-from app.models import Task  # Import Task model for Alembic autogenerate
-
+from app.models import Task, User 
 # This is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
