@@ -55,9 +55,9 @@ class WorkOSImpersonatorResponse(BaseModel):
 
 
 class VerifyEmailResponse(BaseModel):
-    access_token: str | None = Field(..., description="Access token")
+    access_token: str | None = Field(None, description="Access token")
     refresh_token: str | None = Field(None, description="Refresh token")
-    authentication_method: str = Field(..., description="Authentication method")
+    authentication_method: str | None = Field(None, description="Authentication method")
     impersonator: WorkOSImpersonatorResponse | None = Field(None, description="Impersonator")
     organization_id: str | None = Field(None, description="Organization ID")
     user: WorkOSUserResponse | None = Field(None, description="User")

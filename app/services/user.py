@@ -15,11 +15,11 @@ class UserService:
         )
 
     async def create_user(self, db: AsyncSession, user_data: UserCreate) -> User:
-        
-        existing_user = await db.execute(select(User).where(User.email == user_data.email))
+        result = await db.execute(select(User).where(User.email == user_data.email))
+        existing_user = result.scalar_one_or_none()
         if existing_user:
-            return existing_user.scalar_one()
-            
+            return existing_user
+
         create_user_payload = {
             "email": user_data.email,
             "password": user_data.password,
