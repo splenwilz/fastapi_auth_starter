@@ -49,12 +49,16 @@ class LoginResponse(BaseModel):
     refresh_token: str = Field(..., description="Refresh token")
 
 
+class WorkOSImpersonatorResponse(BaseModel):
+    email: str | None = Field(None, description="Impersonator email")
+    reason: str | None = Field(None, description="Impersonation reason")
+
 
 class VerifyEmailResponse(BaseModel):
-    access_token: str = Field(..., description="Access token")
-    refresh_token: str = Field(..., description="Refresh token")
+    access_token: str | None = Field(..., description="Access token")
+    refresh_token: str | None = Field(None, description="Refresh token")
     authentication_method: str = Field(..., description="Authentication method")
-    impersonator: str = Field(..., description="Impersonator")
-    organization_id: str = Field(..., description="Organization ID")
-    user: WorkOSUserResponse = Field(..., description="User")
-    sealed_session: str = Field(..., description="Sealed session")
+    impersonator: WorkOSImpersonatorResponse | None = Field(None, description="Impersonator")
+    organization_id: str | None = Field(None, description="Organization ID")
+    user: WorkOSUserResponse | None = Field(None, description="User")
+    sealed_session: str | None = Field(None, description="Sealed session")

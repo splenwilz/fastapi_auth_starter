@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
 class UserBase(BaseModel):
@@ -69,6 +69,8 @@ class UserResponse(BaseModel):
     email: str = Field(..., min_length=1, max_length=255, description="User email")
     created_at: Optional[datetime] = Field(None, description="Timestamp when user was created")
     updated_at: Optional[datetime] = Field(None, description="Timestamp when user was last updated")
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 

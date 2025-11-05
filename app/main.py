@@ -58,9 +58,14 @@ app = FastAPI(
     lifespan=lifespan,  # Add lifespan for startup/shutdown events
 )
 
+allowed_origins = [
+    "http://localhost:3000",
+    # add other trusted origins here
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

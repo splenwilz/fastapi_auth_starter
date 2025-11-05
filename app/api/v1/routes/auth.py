@@ -35,8 +35,8 @@ async def verify_email(verify_email_request: VerifyEmailRequest, request: Reques
         workos_verify_email_request = WorkOsVerifyEmailRequest(
             pending_authentication_token=verify_email_request.pending_authentication_token,
             code=verify_email_request.code,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent")
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent") or ""
         )
         return await auth_service.verify_email(verify_email_request=workos_verify_email_request)
     except Exception as e:
@@ -78,8 +78,8 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
         workos_login_request = WorkOSLoginRequest(
             email=login_request.email,
             password=login_request.password,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent")
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent") or ""
         )
         
         return await auth_service.login(login_request=workos_login_request)
