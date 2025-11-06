@@ -1,5 +1,5 @@
 from workos import WorkOSClient
-from app.api.v1.schemas.auth import LoginResponse, WorkOSLoginRequest, WorkOsVerifyEmailRequest
+from app.api.v1.schemas.auth import LoginResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
 from app.core.config import settings
 
 class AuthService:
@@ -24,6 +24,68 @@ class AuthService:
             password=login_request.password,
             ip_address=login_request.ip_address,
             user_agent=login_request.user_agent
+        )
+        return LoginResponse(
+            user=response.user,
+            organization_id=response.organization_id,
+            access_token=response.access_token,
+            refresh_token=response.refresh_token
+        )
+
+    # # Generate OAuth2 authorization URL
+    # In app/services/auth.py
+    async def generate_oauth2_authorization_url(
+        self, 
+        authorization_request: WorkOSAuthorizationRequest
+    ) -> str:
+        """
+        Generate OAuth2 authorization URL.
+        
+        Supports two patterns:
+        1. AuthKit: provider="authkit" → Unified authentication interface
+        2. SSO: connection_id="conn_xxx" → Direct provider connection
+        
+        Args:
+            authorization_request: Request containing either provider or connection_id
+            
+        Returns:
+            Authorization URL string
+        """
+        params = {
+            "redirect_uri": authorization_request.redirect_uri,
+        }
+        
+        # Add state if provided
+        if authorization_request.state:
+            params["state"] = authorization_request.state
+        
+        # Determine which pattern to use
+        if authorization_request.provider:
+            # AuthKit pattern
+            params["provider"] = authorization_request.provider
+        elif authorization_request.connection_id:
+            # SSO pattern
+            params["connection_id"] = authorization_request.connection_id
+        
+        authorization_url = self.workos_client.user_management.get_authorization_url(**params)
+        return authorization_url
+
+
+    async def oauth2_callback(
+        self, 
+        code: str
+    ) -> LoginResponse:
+        """
+        Exchange a OAuth2 code for access token and refresh token.
+        
+        Args:
+            code: OAuth2 code
+            
+        Returns:
+            LoginResponse: Access token and refresh token
+        """
+        response = self.workos_client.user_management.authenticate_with_code(
+            code=code
         )
         return LoginResponse(
             user=response.user,

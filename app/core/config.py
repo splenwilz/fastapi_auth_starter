@@ -42,6 +42,22 @@ class Settings(BaseSettings):
         ...,
         description="WorkOS client ID. Must be set via environment variable."
     )
+
+    WORKOS_DEFAULT_CONNECTION_ID: str | None = Field(
+        None,
+        description="Default WorkOS SSO connection ID. Can be overridden by frontend."
+    )
+    # Allowed redirect URIs (comma-separated or JSON array)
+    # Security: Only these URIs are allowed for OAuth redirects
+    WORKOS_ALLOWED_REDIRECT_URIS: str = Field(
+        ...,
+        description="Comma-separated list of allowed redirect URIs for OAuth"
+    )
+    
+    @property
+    def allowed_redirect_uris_list(self) -> list[str]:
+        """Parse allowed redirect URIs into a list"""
+        return [uri.strip() for uri in self.WORKOS_ALLOWED_REDIRECT_URIS.split(",")]
     # Alembic Configuration
     # Used for database migrations
     # Reference: https://alembic.sqlalchemy.org/en/latest/tutorial.html

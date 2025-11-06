@@ -2,7 +2,8 @@ from typing import Union
 from fastapi import APIRouter, HTTPException, Request, status
 from workos.exceptions import BadRequestException, EmailVerificationRequiredException, NotFoundException
 
-from app.api.v1.schemas.auth import EmailVerificationRequiredResponse, LoginRequest, LoginResponse, VerifyEmailRequest, VerifyEmailResponse, WorkOSLoginRequest, WorkOsVerifyEmailRequest
+from app.api.v1.schemas.auth import AuthorizationRequest, EmailVerificationRequiredResponse, LoginRequest, LoginResponse, OAuthCallbackRequest, VerifyEmailRequest, VerifyEmailResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
+from app.core.config import settings
 from app.services.auth import AuthService
 import logging
 
@@ -42,16 +43,6 @@ async def verify_email(verify_email_request: VerifyEmailRequest, request: Reques
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-
-"""This endpoint is used to login a user with email and password.
-
-Args:
-    login_request: LoginRequest
-    request: Request
-
-Returns:
-    Union[LoginResponse, EmailVerificationRequiredResponse]
-"""
 @router.post(
     "/login",
     response_model=Union[LoginResponse, EmailVerificationRequiredResponse],
@@ -110,7 +101,7 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password. Please check your credentials and try again."
-            )
+            ) from e
         
         # Check errors array if present
         if hasattr(e, 'errors') and e.errors:
@@ -130,12 +121,12 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
             detail=f"Invalid request: {e.message if hasattr(e, 'message') else str(e)}"
         )
     
-    except NotFoundException as e:
+    except NotFoundException:
         # User not found
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No account found with this email address. Please sign up first."
-        )
+        ) from None
     
     except Exception as e:
         # Log but don't expose internal errors
@@ -144,3 +135,120 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again later."
         )
+
+@router.post(
+    "/authorize",
+    summary="Generate OAuth2 authorization URL",
+    
+    status_code=status.HTTP_200_OK
+)
+async def authorize(authorization_request: AuthorizationRequest) -> dict:
+    """
+    Generate an OAuth2 authorization URL.
+     The supported provider values are `GoogleOAuth`, `MicrosoftOAuth`, `GitHubOAuth`, and `AppleOAuth`. 
+    
+    Frontend can choose:
+    - `provider="authkit"`: For unified interface with multiple auth methods
+    - `connection_id="conn_xxx"`: For direct provider connection (better UX for specific buttons)
+
+    Args:
+        authorization_request (AuthorizationRequest): Authorization request.
+
+    Returns:
+        dict: Authorization URL.
+    """
+    # Validate redirect_uri against whitelist (security requirement)
+    if authorization_request.redirect_uri not in settings.allowed_redirect_uris_list:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid redirect_uri. Must be one of: {settings.allowed_redirect_uris_list}"
+        )
+    
+    # For SSO: Use default connection_id if not provided
+    if authorization_request.connection_id and not authorization_request.provider:
+        # SSO pattern - connection_id provided
+        workos_request = WorkOSAuthorizationRequest(
+            connection_id=authorization_request.connection_id,
+            redirect_uri=authorization_request.redirect_uri,
+            state=authorization_request.state
+        )
+    elif authorization_request.provider:
+        # AuthKit pattern
+        workos_request = WorkOSAuthorizationRequest(
+            provider=authorization_request.provider,
+            redirect_uri=authorization_request.redirect_uri,
+            state=authorization_request.state
+        )
+    else:
+        # Fallback: Try default connection_id if available
+        if settings.WORKOS_DEFAULT_CONNECTION_ID:
+            workos_request = WorkOSAuthorizationRequest(
+                connection_id=settings.WORKOS_DEFAULT_CONNECTION_ID,
+                redirect_uri=authorization_request.redirect_uri,
+                state=authorization_request.state
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either 'provider' or 'connection_id' must be provided"
+            ) 
+    
+    auth_service = AuthService()
+    try:
+        authorization_url = await auth_service.generate_oauth2_authorization_url(workos_request)
+        return {"authorization_url": authorization_url}
+    except Exception as e:
+        logger.error(f"Error generating authorization URL: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate authorization URL"
+        ) from e
+
+@router.post(
+    "/callback",
+    response_model=LoginResponse,
+    summary="Exchange OAuth2 code for access token and refresh token",
+    status_code=status.HTTP_200_OK
+)
+async def callback(callback_request: OAuthCallbackRequest) -> LoginResponse:
+    """
+    Exchange an OAuth2 code for access and refresh token.
+
+    Args:
+        callback_request (OAuthCallbackRequest): Callback request.
+
+    Returns:
+        LoginResponse: Access token and refresh token
+    """
+    auth_service = AuthService()
+    try:
+        return await auth_service.oauth2_callback(code=callback_request.code)
+    except BadRequestException as e:
+        error_code = getattr(e, 'code', None)
+        error_description = getattr(e, 'error_description', '')
+        if 'invalid_grant' in error_description or error_code == 'invalid_grant':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired authorization code. Please request a new authorization code."
+            ) from e
+        if error_code == 'invalid_credentials':
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            ) from e
+        if error_code == 'invalid_code':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid code"
+            ) from e
+        logger.error(f"Error exchanging OAuth2 code: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to exchange OAuth2 code"
+        ) from e
+    except Exception as e:
+        logger.error(f"Error exchanging OAuth2 code: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to exchange OAuth2 code"
+        ) from e

@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serial
 class UserBase(BaseModel):
     """
     Base schema with common User fields
-    Used as base for create and update schemas
+    Used as base for create schemas
     """
     first_name: Optional[str] = Field(None, max_length=255, description="User first name")
     last_name: Optional[str] = Field(None, max_length=255, description="User last name")

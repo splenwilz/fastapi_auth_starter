@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from workos import WorkOSClient
 from datetime import datetime, timezone
 from app.core.config import settings
-from app.core.exceptions import InvalidPasswordException
 from app.models.user import User
 from app.api.v1.schemas.user import UserCreate, UserUpdate
 
@@ -24,10 +23,6 @@ class UserService:
         return list(result.scalars().all())
 
     async def create_user(self, db: AsyncSession, user_data: UserCreate) -> User:
-        result = await db.execute(select(User).where(User.email == user_data.email))
-        existing_user = result.scalar_one_or_none()
-        if existing_user:
-            return existing_user
 
         create_user_payload = {
             "email": user_data.email,
