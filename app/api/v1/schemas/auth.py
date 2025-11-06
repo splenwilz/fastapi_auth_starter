@@ -1,6 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field
-from app.api.v1.schemas.user import UserResponse
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
 
 class EmailVerificationRequiredResponse(BaseModel):
@@ -64,9 +63,6 @@ class VerifyEmailResponse(BaseModel):
     user: WorkOSUserResponse | None = Field(None, description="User")
     sealed_session: str | None = Field(None, description="Sealed session")
 
-
-# In app/api/v1/schemas/auth.py
-from pydantic import BaseModel, Field, model_validator
 
 class AuthorizationRequest(BaseModel):
     """

@@ -1,3 +1,4 @@
+import asyncio
 from workos import WorkOSClient
 from app.api.v1.schemas.auth import LoginResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
 from app.core.config import settings
@@ -10,7 +11,10 @@ class AuthService:
         )
 
     async def verify_email(self, verify_email_request: WorkOsVerifyEmailRequest):
-        response = self.workos_client.user_management.authenticate_with_email_verification(
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        # Reference: https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread
+        response = await asyncio.to_thread(
+            self.workos_client.user_management.authenticate_with_email_verification,
             code=verify_email_request.code,
             pending_authentication_token=verify_email_request.pending_authentication_token,
             ip_address=verify_email_request.ip_address,
@@ -19,7 +23,9 @@ class AuthService:
         return response
 
     async def login(self, login_request: WorkOSLoginRequest) -> LoginResponse:
-        response = self.workos_client.user_management.authenticate_with_password(
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        response = await asyncio.to_thread(
+            self.workos_client.user_management.authenticate_with_password,
             email=login_request.email,
             password=login_request.password,
             ip_address=login_request.ip_address,
@@ -67,7 +73,11 @@ class AuthService:
             # SSO pattern
             params["connection_id"] = authorization_request.connection_id
         
-        authorization_url = self.workos_client.user_management.get_authorization_url(**params)
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        authorization_url = await asyncio.to_thread(
+            self.workos_client.user_management.get_authorization_url,
+            **params
+        )
         return authorization_url
 
 
@@ -84,7 +94,9 @@ class AuthService:
         Returns:
             LoginResponse: Access token and refresh token
         """
-        response = self.workos_client.user_management.authenticate_with_code(
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        response = await asyncio.to_thread(
+            self.workos_client.user_management.authenticate_with_code,
             code=code
         )
         return LoginResponse(

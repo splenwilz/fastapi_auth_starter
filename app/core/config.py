@@ -4,6 +4,7 @@ Handles environment variables and configuration management
 All configuration values should be set in .env file or environment variables
 Reference: https://fastapi.tiangolo.com/advanced/settings/
 """
+import json
 from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings
 
@@ -56,8 +57,35 @@ class Settings(BaseSettings):
     
     @property
     def allowed_redirect_uris_list(self) -> list[str]:
-        """Parse allowed redirect URIs into a list"""
-        return [uri.strip() for uri in self.WORKOS_ALLOWED_REDIRECT_URIS.split(",")]
+        """
+        Parse allowed redirect URIs into a list.
+        
+        Supports two formats:
+        1. JSON array: ["https://app.example.com/callback", "https://app2.example.com/callback"]
+        2. Comma-separated: https://app.example.com/callback,https://app2.example.com/callback
+        
+        Reference: https://docs.python.org/3/library/json.html
+        """
+        raw = self.WORKOS_ALLOWED_REDIRECT_URIS.strip()
+        if not raw:
+            return []
+        
+        # Try parsing as JSON first (supports JSON array format)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            # Fall back to comma-separated string format
+            return [uri.strip() for uri in raw.split(",") if uri.strip()]
+        
+        # Handle parsed JSON result
+        if isinstance(parsed, str):
+            return [parsed.strip()]
+        if isinstance(parsed, list):
+            return [str(uri).strip() for uri in parsed if str(uri).strip()]
+        
+        raise ValueError(
+            "WORKOS_ALLOWED_REDIRECT_URIS must be a JSON array or comma-separated string"
+        )
     # Alembic Configuration
     # Used for database migrations
     # Reference: https://alembic.sqlalchemy.org/en/latest/tutorial.html

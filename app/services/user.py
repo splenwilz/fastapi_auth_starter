@@ -1,3 +1,4 @@
+import asyncio
 from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,11 @@ class UserService:
         }
 
         # Create user in WorkOS
-        workos_user_response = self.workos_client.user_management.create_user(**create_user_payload)
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        workos_user_response = await asyncio.to_thread(
+            self.workos_client.user_management.create_user,
+            **create_user_payload
+        )
         
         # Send verification email
         # On signup, we don't send the verification email to the user, because it will be sent later in the login process for the first time.
@@ -56,20 +61,26 @@ class UserService:
         if not existing_user:
             return None
 
+        # Get only fields that were explicitly set (exclude_unset=True)
+        # This prevents sending None values for omitted fields, which could clear them in WorkOS
+        # Reference: https://docs.pydantic.dev/latest/api/standard_library/#pydantic.BaseModel.model_dump
+        update_data = user_data.model_dump(exclude_unset=True)
         
-        update_user_payload = {
-            "first_name": user_data.first_name,
-            "last_name": user_data.last_name
-        }
-
-        self.workos_client.user_management.update_user(
+        # Early return if no fields to update
+        if not update_data:
+            return existing_user
+        
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        # Only send fields that were explicitly provided (prevents clearing fields with None)
+        await asyncio.to_thread(
+            self.workos_client.user_management.update_user,
             user_id=user_id,
-            **update_user_payload
+            **update_data
         )   
         
-        update_data = user_data.model_dump(exclude_unset=True) # includes only fields that are set
-        for field, value in update_data.items(): # update the existing user with the new data
-            setattr(existing_user, field, value) # set the value of the field to the new value
+        # Update the database model with the same filtered data
+        for field, value in update_data.items():
+            setattr(existing_user, field, value)
 
         # Don't commit here - let the get_db() dependency handle commit/rollback
         await db.flush() # flush changes to database (without committing)
@@ -87,7 +98,9 @@ class UserService:
         if not existing_user:
             return False
         
-        self.workos_client.user_management.delete_user(
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        await asyncio.to_thread(
+            self.workos_client.user_management.delete_user,
             user_id=user_id
         )
 

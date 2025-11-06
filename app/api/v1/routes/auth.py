@@ -119,7 +119,7 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid request: {e.message if hasattr(e, 'message') else str(e)}"
-        )
+        ) from e
     
     except NotFoundException:
         # User not found
@@ -134,7 +134,7 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again later."
-        )
+        ) from e
 
 @router.post(
     "/authorize",
