@@ -1,7 +1,7 @@
 [project]
 name = "fastapi-auth-starter"
 version = "0.1.0"
-description = "Add your description here"
+description = "This is a FastAPI auth starter project that uses the WorkOS API to authenticate users."
 readme = "README.md"
 # Vercel supports up to Python 3.12
 requires-python = ">=3.12"
@@ -9,9 +9,11 @@ dependencies = [
     "asyncpg>=0.30.0",
     "fastapi>=0.121.0",
     "greenlet>=3.2.4",
+    "pydantic>=2.0.0",
     "pydantic-settings>=2.11.0",
     "sqlalchemy>=2.0.44",
     "uvicorn[standard]>=0.38.0",
+    "workos>=5.0.0",
 ]
 # Development dependencies (not needed for runtime on Vercel)
 # These are only needed for local development and migrations
