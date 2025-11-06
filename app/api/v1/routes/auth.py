@@ -60,17 +60,22 @@ Returns:
 )
 async def login(login_request: LoginRequest, request: Request) -> Union[LoginResponse, EmailVerificationRequiredResponse]:
     """
-    This endpoint is used to login a user with email and password.
+    Authenticate a user via email and password.
 
-    Note: If the user is not verified, the endpoint will return an EmailVerificationRequiredResponse.
+    If the user is not verified, returns an `EmailVerificationRequiredResponse`
+    containing a `pending_authentication_token` and `email_verification_id`.
+    These are used with the code sent to the user’s email to complete verification
+    through the `verify-email` endpoint.
 
     Args:
-        login_request: LoginRequest
-        request: Request
+        login_request (LoginRequest): User credentials.
+        request (Request): Current HTTP request context.
 
     Returns:
         Union[LoginResponse, EmailVerificationRequiredResponse]
     """
+
+
     
     auth_service = AuthService()
     

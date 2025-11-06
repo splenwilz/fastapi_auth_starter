@@ -72,5 +72,10 @@ class UserResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-
-
+class UserUpdate(BaseModel):
+    """
+    Schema for updating a user
+    All fields are optional for partial updates
+    """
+    first_name: Optional[str] = Field(None, max_length=255, description="User first name")
+    last_name: Optional[str] = Field(None, max_length=255, description="User last name")
