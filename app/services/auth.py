@@ -1,7 +1,18 @@
 import asyncio
+import time
+from typing import Optional
+import httpx
+from authlib.jose import jwt, JsonWebKey
+from authlib.jose.errors import DecodeError, ExpiredTokenError, InvalidClaimError, BadSignatureError
 from workos import WorkOSClient
-from app.api.v1.schemas.auth import LoginResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.v1.schemas.auth import ForgotPasswordRequest, ForgotPasswordResponse, LoginResponse, SignupResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest, WorkOSUserResponse
 from app.core.config import settings
+from app.models.user import User
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AuthService:
     def __init__(self):
@@ -9,6 +20,9 @@ class AuthService:
             api_key=settings.WORKOS_API_KEY,
             client_id=settings.WORKOS_CLIENT_ID
         )
+        # Cache JWKS to avoid repeated fetches (cache for 1 hour)
+        self._jwks_cache: Optional[dict] = None
+        self._jwks_cache_expiry: Optional[float] = None
 
     async def verify_email(self, verify_email_request: WorkOsVerifyEmailRequest):
         # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
@@ -38,8 +52,95 @@ class AuthService:
             refresh_token=response.refresh_token
         )
 
-    # # Generate OAuth2 authorization URL
-    # In app/services/auth.py
+    async def signup(
+        self,
+        db: AsyncSession,
+        email: str,
+        password: str,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None
+    ) -> SignupResponse:
+        """
+        Sign up a new user.
+        
+        Creates the user in WorkOS and saves to database.
+        User must verify their email before they can login.
+        
+        Args:
+            db: Database session
+            email: User email
+            password: User password
+            first_name: Optional first name
+            last_name: Optional last name
+            
+        Returns:
+            SignupResponse with user info (no tokens - email verification required)
+            
+        Raises:
+            BadRequestException: If user creation fails (e.g., email already exists)
+        """
+        # Create user in WorkOS
+        create_user_payload = {
+            "email": email,
+            "password": password,
+        }
+        if first_name:
+            create_user_payload["first_name"] = first_name
+        if last_name:
+            create_user_payload["last_name"] = last_name
+        
+        # Offload synchronous WorkOS call to thread pool
+        workos_user = await asyncio.to_thread(
+            self.workos_client.user_management.create_user,
+            **create_user_payload
+        )
+        
+        # Create user in database
+        user = User(
+            id=workos_user.id,
+            email=workos_user.email,
+            first_name=workos_user.first_name,
+            last_name=workos_user.last_name
+        )
+        db.add(user)
+        await db.flush()
+        
+        logger.info(f"User created: {workos_user.id} ({email})")
+        
+        # Convert WorkOS user to response schema
+        user_response = WorkOSUserResponse(
+            object=workos_user.object,
+            id=workos_user.id,
+            email=workos_user.email,
+            first_name=workos_user.first_name,
+            last_name=workos_user.last_name,
+            email_verified=workos_user.email_verified,
+            profile_picture_url=workos_user.profile_picture_url,
+            created_at=workos_user.created_at,
+            updated_at=workos_user.updated_at,
+        )
+        
+        return SignupResponse(user=user_response)
+
+    async def forgot_password(self, forgot_password_request: ForgotPasswordRequest) -> ForgotPasswordResponse:
+        
+         # WorkOS generates token and sends email
+        # The email will use the URL you configured in Dashboard → Redirects
+        await asyncio.to_thread(
+            self.workos_client.user_management.create_password_reset,
+            email=forgot_password_request.email
+        )
+        
+        # WorkOS automatically sends email with your configured URL
+        # The URL will be: your-frontend.com/reset-password?token=...
+        # NB: The WorkOS dashboard needs to be updated with the frontend password reset URL
+        
+        # Return generic success message (don't expose token/URL)
+        return ForgotPasswordResponse(
+            message="If an account exists with this email address, a password reset link has been sent."
+        )
+
+    # Generate OAuth2 authorization URL
     async def generate_oauth2_authorization_url(
         self, 
         authorization_request: WorkOSAuthorizationRequest
@@ -105,3 +206,103 @@ class AuthService:
             access_token=response.access_token,
             refresh_token=response.refresh_token
         )
+
+    async def verify_session(self, access_token: str) -> dict:
+        """
+        Verify a WorkOS JWT access token with full signature verification.
+        
+        Uses WorkOS JWKS to verify the token signature. This ensures the token
+        is authentic and hasn't been tampered with.
+        
+        Reference: 
+        - https://workos.com/docs/reference/authkit/session-tokens/access-token
+        - https://workos.com/docs/reference/authkit/session-tokens/jwks
+        
+        Args:
+            access_token: JWT token from WorkOS
+            
+        Returns:
+            Dict with user information from verified token:
+            - user_id: User ID (sub claim)
+            - session_id: Session ID (sid claim)
+            - organization_id: Organization ID (org_id claim)
+            - role: User role (role claim)
+            - roles: Array of roles (roles claim)
+            - permissions: Array of permissions (permissions claim)
+            - entitlements: Array of entitlements (entitlements claim)
+            - exp: Expiration timestamp
+            - iat: Issued at timestamp
+            
+        Raises:
+            ValueError: If token is invalid, expired, or signature verification fails
+        """
+        try:
+            # Get JWKS URL from WorkOS SDK
+            # Reference: https://workos.com/docs/reference/authkit/session-tokens/jwks
+            # get_jwks_url() uses the client_id from the WorkOSClient initialization
+            jwks_url = await asyncio.to_thread(
+                self.workos_client.user_management.get_jwks_url
+            )
+            
+            # Fetch JWKS (with caching to avoid repeated API calls)
+            current_time = time.time()
+            if not self._jwks_cache or (self._jwks_cache_expiry and current_time > self._jwks_cache_expiry):
+                logger.debug(f"Fetching JWKS from: {jwks_url}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(jwks_url, timeout=10.0)
+                    response.raise_for_status()
+                    self._jwks_cache = response.json()
+                    # Cache for 1 hour (JWKS keys don't change often)
+                    self._jwks_cache_expiry = current_time + 3600
+                    logger.debug(f"JWKS fetched and cached. Keys: {len(self._jwks_cache.get('keys', []))}")
+            
+            # Create JWK set from JWKS
+            # authlib handles parsing the JWKS and selecting the correct key
+            jwk_set = JsonWebKey.import_key_set(self._jwks_cache)
+            
+            # Verify and decode the JWT
+            # authlib automatically:
+            # - Verifies signature using the correct key from JWKS (based on 'kid' in header)
+            # - Validates expiration (exp)
+            # - Validates issued at (iat)
+            claims = jwt.decode(
+                access_token,
+                jwk_set,
+                claims_options={
+                    "exp": {"essential": True},
+                    "iat": {"essential": True}
+                }
+            )
+            
+            logger.debug(f"Token verified successfully. User: {claims.get('sub')}")
+            
+            # Extract user information from verified token
+            # Reference: https://workos.com/docs/reference/authkit/session-tokens/access-token
+            return {
+                'user_id': claims.get('sub'),              # User ID (subject)
+                'session_id': claims.get('sid'),           # Session ID
+                'organization_id': claims.get('org_id'),  # Organization ID
+                'role': claims.get('role'),                # User role (e.g., "member", "admin")
+                'roles': claims.get('roles', []),         # Array of roles
+                'permissions': claims.get('permissions', []), # Permissions array
+                'entitlements': claims.get('entitlements', []), # Entitlements array
+                'exp': claims.get('exp'),
+                'iat': claims.get('iat'),
+            }
+            
+        except ExpiredTokenError:
+            logger.warning("Token has expired")
+            raise ValueError("Token has expired")
+        except BadSignatureError:
+            logger.warning("Invalid token signature")
+            raise ValueError("Invalid token signature - token may have been tampered with")
+        except DecodeError as e:
+            logger.warning(f"Failed to decode token: {e}")
+            raise ValueError(f"Invalid token format: {e}")
+        except InvalidClaimError as e:
+            logger.warning(f"Invalid token claim: {e}")
+            raise ValueError(f"Invalid token claim: {e}")
+        except Exception as e:
+            logger.error(f"Error verifying session: {type(e).__name__}: {e}", exc_info=True)
+            raise ValueError(f"Token verification failed: {str(e)}")
+

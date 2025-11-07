@@ -1,9 +1,11 @@
 from typing import Union
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from workos.exceptions import BadRequestException, EmailVerificationRequiredException, NotFoundException
 
-from app.api.v1.schemas.auth import AuthorizationRequest, EmailVerificationRequiredResponse, LoginRequest, LoginResponse, OAuthCallbackRequest, VerifyEmailRequest, VerifyEmailResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
+from app.api.v1.schemas.auth import AuthorizationRequest, EmailVerificationRequiredResponse, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse, OAuthCallbackRequest, SignupRequest, SignupResponse, VerifyEmailRequest, VerifyEmailResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
 from app.core.config import settings
+from app.core.database import get_db
 from app.services.auth import AuthService
 import logging
 
@@ -16,42 +18,84 @@ router = APIRouter(
 
 
 @router.post(
-    "/verify-email",
-    response_model=VerifyEmailResponse,
-    summary="Verify an email address",
-    status_code=status.HTTP_200_OK
-    )
-async def verify_email(verify_email_request: VerifyEmailRequest, request: Request):
-    """This endpoint is used to verify an email address.
-
+    "/signup",
+    response_model=SignupResponse,
+    summary="Sign up a new user",
+    description="Create a new user account. Email verification required before login.",
+    status_code=status.HTTP_201_CREATED
+)
+async def signup(
+    signup_request: SignupRequest,
+    db: AsyncSession = Depends(get_db)
+) -> SignupResponse:
+    """
+    Sign up a new user.
+    
+    Creates a new user account in WorkOS and your database.
+    User must verify their email before they can login.
+    
     Args:
-        verify_email_request: WorkOsVerifyEmailRequest
-        request: Request
-
+        signup_request: User signup data (email, password, name, etc.)
+        db: Database session
+        
     Returns:
-        VerifyEmailResponse
+        SignupResponse: User information (no tokens - email verification required)
+        
+    Raises:
+        HTTPException: 409 if email already exists, 400 for validation errors
     """
     auth_service = AuthService()
+    
     try:
-        workos_verify_email_request = WorkOsVerifyEmailRequest(
-            pending_authentication_token=verify_email_request.pending_authentication_token,
-            code=verify_email_request.code,
-            ip_address=request.client.host if request.client else "",
-            user_agent=request.headers.get("user-agent") or ""
+        return await auth_service.signup(
+            db=db,
+            email=signup_request.email,
+            password=signup_request.password,
+            first_name=signup_request.first_name,
+            last_name=signup_request.last_name
         )
-        return await auth_service.verify_email(verify_email_request=workos_verify_email_request)
+    except BadRequestException as e:
+        # Handle WorkOS validation errors
+        if hasattr(e, 'errors') and e.errors:
+            for error in e.errors:
+                error_code = error.get('code', '')
+                error_message = error.get('message', '')
+                
+                if error_code == 'email_not_available':
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Email address is already registered. Please use a different email or try logging in."
+                    )
+                
+                if error_code == 'invalid_email':
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid email address format"
+                    )
+        
+        # Generic WorkOS error
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to create account: {e.message if hasattr(e, 'message') else str(e)}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.error(f"Unexpected error during signup: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while creating your account"
+        ) from e
+
+
 
 @router.post(
-    "/login",
+    "/signin",
     response_model=Union[LoginResponse, EmailVerificationRequiredResponse],
-    summary="Login a user with email and password",
+    summary="Sign in a user with email and password",
     status_code=status.HTTP_200_OK
 )
 async def login(login_request: LoginRequest, request: Request) -> Union[LoginResponse, EmailVerificationRequiredResponse]:
     """
-    Authenticate a user via email and password.
+    Sign in a user with email and password.
 
     If the user is not verified, returns an `EmailVerificationRequiredResponse`
     containing a `pending_authentication_token` and `email_verification_id`.
@@ -135,6 +179,75 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again later."
         ) from e
+
+
+@router.post(
+    "/verify-email",
+    response_model=VerifyEmailResponse,
+    summary="Verify an email address",
+    status_code=status.HTTP_200_OK
+    )
+async def verify_email(verify_email_request: VerifyEmailRequest, request: Request):
+    """This endpoint is used to verify an email address.
+
+    Args:
+        verify_email_request: WorkOsVerifyEmailRequest
+        request: Request
+
+    Returns:
+        VerifyEmailResponse
+    """
+    auth_service = AuthService()
+    try:
+        workos_verify_email_request = WorkOsVerifyEmailRequest(
+            pending_authentication_token=verify_email_request.pending_authentication_token,
+            code=verify_email_request.code,
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent") or ""
+        )
+        return await auth_service.verify_email(verify_email_request=workos_verify_email_request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+@router.post(
+    "/forgot-password",
+    response_model=ForgotPasswordResponse,
+    summary="Forgot password",
+    status_code=status.HTTP_200_OK
+)
+async def forgot_password(forgot_password_request: ForgotPasswordRequest) -> ForgotPasswordResponse:
+    """
+    Request a password reset for a user account.
+
+    Sends a password reset email to the provided email address if an account exists.
+    The email contains a link to reset the password. The reset URL is configured
+    in the WorkOS Dashboard under Developer → Redirects → Password reset URL.
+
+    For security, the response message does not reveal whether the email address
+    is registered in the system.
+
+    Args:
+        forgot_password_request (ForgotPasswordRequest): Request containing the user's email address.
+
+    Returns:
+        ForgotPasswordResponse: Success message indicating a reset link was sent (if account exists).
+
+    Raises:
+        HTTPException: 400 if email format is invalid, 500 for other errors.
+    """
+    auth_service = AuthService()
+    try:
+        return await auth_service.forgot_password(forgot_password_request=forgot_password_request)
+    except BadRequestException as e:
+        error_code = getattr(e, 'code', None)
+        error_description = getattr(e, 'error_description', '')
+        if 'invalid_email' in error_description or error_code == 'invalid_email':
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email address") from e
+        logger.error(f"Error during forgot password: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send password reset email") from e
+    except Exception as e:
+        logger.error(f"Error during forgot password: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send password reset email") from e
 
 @router.post(
     "/authorize",

@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 
 class EmailVerificationRequiredResponse(BaseModel):
@@ -22,6 +22,41 @@ class WorkOsVerifyEmailRequest(VerifyEmailRequest):
 class LoginRequest(BaseModel):
     email: str = Field(..., description="User email")
     password: str = Field(..., description="User password")
+
+class SignupRequest(BaseModel):
+    """
+    Schema for user signup/registration.
+    
+    Used for public self-registration endpoint.
+    Includes password validation and confirmation.
+    """
+    email: str = Field(..., min_length=1, max_length=255, description="User email")
+    password: str = Field(..., min_length=8, max_length=255, description="User password")
+    confirm_password: str = Field(..., min_length=8, max_length=255, description="Password confirmation")
+    first_name: Optional[str] = Field(None, max_length=255, description="User first name")
+    last_name: Optional[str] = Field(None, max_length=255, description="User last name")
+    
+    @field_validator('password')
+    def validate_password(cls, v: str) -> str:
+        """Validate password strength."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(char.isdigit() for char in v):
+            raise ValueError("Password must contain at least one number")
+        if not any(char.isalpha() for char in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(char.isupper() for char in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(char.islower() for char in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        return v
+    
+    @model_validator(mode='after')
+    def validate_confirm_password(self) -> 'SignupRequest':
+        """Ensure password and confirm_password match."""
+        if self.password != self.confirm_password:
+            raise ValueError("Password and confirm password do not match")
+        return self
 
 class WorkOSLoginRequest(LoginRequest):
     ip_address: str = Field(..., description="User IP address")
@@ -47,6 +82,27 @@ class LoginResponse(BaseModel):
     organization_id: str | None = Field(None, description="Organization ID")
     access_token: str = Field(..., description="Access token")
     refresh_token: str = Field(..., description="Refresh token")
+
+class SignupResponse(BaseModel):
+    """
+    Response for user signup.
+    
+    Returns user information without tokens since email verification is required.
+    User must verify email and then login to get tokens.
+    """
+    user: WorkOSUserResponse = Field(..., description="Created user")
+    message: str = Field(default="User created successfully. Please verify your email to login.", description="Success message")
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., description="User email")
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str = Field(
+        default="If an account exists with this email address, a password reset link has been sent.",
+        description="Generic success message"
+    )
 
 
 class WorkOSImpersonatorResponse(BaseModel):
