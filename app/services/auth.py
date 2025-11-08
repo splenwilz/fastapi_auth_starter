@@ -6,7 +6,8 @@ from authlib.jose import jwt, JsonWebKey
 from authlib.jose.errors import DecodeError, ExpiredTokenError, InvalidClaimError, BadSignatureError
 from workos import WorkOSClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.v1.schemas.auth import ForgotPasswordRequest, ForgotPasswordResponse, LoginResponse, SignupResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest, WorkOSUserResponse
+from sqlalchemy import select
+from app.api.v1.schemas.auth import ForgotPasswordRequest, ForgotPasswordResponse, LoginResponse, RefreshTokenResponse, SignupResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOSRefreshTokenRequest, WorkOSResetPasswordRequest, WorkOsVerifyEmailRequest, WorkOSUserResponse
 from app.core.config import settings
 from app.models.user import User
 
@@ -77,9 +78,26 @@ class AuthService:
             SignupResponse with user info (no tokens - email verification required)
             
         Raises:
-            BadRequestException: If user creation fails (e.g., email already exists)
+            IntegrityError: If user already exists in database (email conflict)
+            BadRequestException: If user creation fails in WorkOS (e.g., email already exists)
         """
-        # Create user in WorkOS
+        # Check if user already exists in database BEFORE creating in WorkOS
+        # This prevents creating orphaned users in WorkOS if DB insert fails
+        result = await db.execute(select(User).where(User.email == email))
+        existing_user = result.scalar_one_or_none()
+        
+        if existing_user:
+            logger.warning(f"User already exists in database: {email}")
+            # Raise IntegrityError to match database constraint violation behavior
+            # This will be caught by the route handler and converted to 409 Conflict
+            from sqlalchemy.exc import IntegrityError as SQLIntegrityError
+            raise SQLIntegrityError(
+                statement="INSERT INTO users",
+                params=None,
+                orig=Exception("duplicate key value violates unique constraint \"ix_users_email\"")
+            )
+        
+        # Create user in WorkOS (only if not in database)
         create_user_payload = {
             "email": email,
             "password": password,
@@ -138,6 +156,34 @@ class AuthService:
         # Return generic success message (don't expose token/URL)
         return ForgotPasswordResponse(
             message="If an account exists with this email address, a password reset link has been sent."
+        )
+
+    async def reset_password(self, reset_password_request: WorkOSResetPasswordRequest) -> WorkOSUserResponse:
+        """
+        Reset a user's password.
+        
+        Args:
+            reset_password_request: WorkOSResetPasswordRequest
+
+        Returns:
+            WorkOSUserResponse: User information
+        """
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        response = await asyncio.to_thread(
+            self.workos_client.user_management.reset_password,
+            token=reset_password_request.token,
+            new_password=reset_password_request.new_password
+        )
+        return WorkOSUserResponse(
+            object=response.object,
+            id=response.id,
+            email=response.email,
+            first_name=response.first_name,
+            last_name=response.last_name,
+            email_verified=response.email_verified,
+            profile_picture_url=response.profile_picture_url,
+            created_at=response.created_at,
+            updated_at=response.updated_at,
         )
 
     # Generate OAuth2 authorization URL
@@ -261,10 +307,8 @@ class AuthService:
             jwk_set = JsonWebKey.import_key_set(self._jwks_cache)
             
             # Verify and decode the JWT
-            # authlib automatically:
-            # - Verifies signature using the correct key from JWKS (based on 'kid' in header)
-            # - Validates expiration (exp)
-            # - Validates issued at (iat)
+            # jwt.decode() verifies the signature using the correct key from JWKS (based on 'kid' in header)
+            # However, it does NOT validate expiration/claims - that requires claims.validate()
             claims = jwt.decode(
                 access_token,
                 jwk_set,
@@ -273,6 +317,10 @@ class AuthService:
                     "iat": {"essential": True}
                 }
             )
+            
+            # CRITICAL: Validate claims (expiration, issued at, etc.)
+            # Without this, expired tokens would be accepted!
+            claims.validate()
             
             logger.debug(f"Token verified successfully. User: {claims.get('sub')}")
             
@@ -305,4 +353,28 @@ class AuthService:
         except Exception as e:
             logger.error(f"Error verifying session: {type(e).__name__}: {e}", exc_info=True)
             raise ValueError(f"Token verification failed: {str(e)}")
+
+
+    # refresh token
+    async def refresh_token(self, refresh_token_request: WorkOSRefreshTokenRequest) -> RefreshTokenResponse:
+        """
+        Refresh a WorkOS JWT access token.
+        
+        Args:
+            refresh_token_request: WorkOSRefreshTokenRequest
+            
+        Returns:
+            RefreshTokenResponse: Access token and refresh token
+        """
+        # Offload synchronous WorkOS call to thread pool to avoid blocking event loop
+        response = await asyncio.to_thread(
+            self.workos_client.user_management.authenticate_with_refresh_token,
+            refresh_token=refresh_token_request.refresh_token,
+            ip_address=refresh_token_request.ip_address,
+            user_agent=refresh_token_request.user_agent
+        )
+        return RefreshTokenResponse(
+            access_token=response.access_token,
+            refresh_token=response.refresh_token
+        )
 

@@ -2,6 +2,8 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 
+from app.api.v1.schemas.user import WorkOSUserResponse
+
 class EmailVerificationRequiredResponse(BaseModel):
     message: str
     pending_authentication_token: str
@@ -62,21 +64,6 @@ class WorkOSLoginRequest(LoginRequest):
     ip_address: str = Field(..., description="User IP address")
     user_agent: str = Field(..., description="User user agent")
 
-class WorkOSUserResponse(BaseModel):
-    object: str = Field(..., description="Object")
-    id: str = Field(..., description="User ID")
-    email: str = Field(..., description="User email")
-    first_name: str | None = Field(None, description="User first name")
-    last_name: str | None = Field(None, description="User last name") 
-    email_verified: bool = Field(..., description="User email verified")
-    profile_picture_url: str | None = Field(None, description="User profile picture URL")
-    created_at: datetime = Field(..., description="User created at")
-    updated_at: datetime = Field(..., description="User updated at")
-
-    class Config:
-        from_attributes = True
-    
-
 class LoginResponse(BaseModel):
     user: WorkOSUserResponse = Field(..., description="User")
     organization_id: str | None = Field(None, description="Organization ID")
@@ -104,6 +91,34 @@ class ForgotPasswordResponse(BaseModel):
         description="Generic success message"
     )
 
+class WorkOSResetPasswordRequest(BaseModel):
+    token: str = Field(..., description="Reset password token")
+    new_password: str = Field(..., description="New password")
+
+class ResetPasswordRequest(WorkOSResetPasswordRequest):
+    confirm_new_password: str = Field(..., description="Confirm new password")
+
+    @field_validator('new_password')
+    def validate_new_password(cls, v: str) -> str:
+        """Validate new password strength."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(char.isdigit() for char in v):
+            raise ValueError("Password must contain at least one number")
+        if not any(char.isalpha() for char in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(char.isupper() for char in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(char.islower() for char in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        return v
+    
+    @model_validator(mode='after')
+    def validate_confirm_new_password(self) -> 'ResetPasswordRequest':
+        """Ensure new password and confirm_new_password match."""
+        if self.new_password != self.confirm_new_password:
+            raise ValueError("New password and confirm new password do not match")
+        return self
 
 class WorkOSImpersonatorResponse(BaseModel):
     email: str | None = Field(None, description="Impersonator email")
@@ -161,9 +176,23 @@ class AuthorizationRequest(BaseModel):
         
         return self
 
+class AuthorizationUrlResponse(BaseModel):
+    authorization_url: str = Field(..., description="Authorization URL")
+
 class WorkOSAuthorizationRequest(AuthorizationRequest):
     pass
 
 class OAuthCallbackRequest(BaseModel):
     code: str = Field(..., description="Authorization code from OAuth callback")
     state: str | None = Field(None, description="State parameter for CSRF verification")
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(..., description="Refresh token")
+
+class WorkOSRefreshTokenRequest(RefreshTokenRequest):
+    ip_address: str = Field(..., description="User IP address")
+    user_agent: str = Field(..., description="User user agent")
+
+class RefreshTokenResponse(BaseModel):
+    access_token: str = Field(..., description="Access token")
+    refresh_token: str = Field(..., description="Refresh token")

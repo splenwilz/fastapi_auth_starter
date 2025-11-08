@@ -1,9 +1,11 @@
 from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from workos.exceptions import BadRequestException, EmailVerificationRequiredException, NotFoundException
 
-from app.api.v1.schemas.auth import AuthorizationRequest, EmailVerificationRequiredResponse, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse, OAuthCallbackRequest, SignupRequest, SignupResponse, VerifyEmailRequest, VerifyEmailResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOsVerifyEmailRequest
+from app.api.v1.schemas.auth import AuthorizationRequest, AuthorizationUrlResponse, EmailVerificationRequiredResponse, ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, LoginResponse, OAuthCallbackRequest, RefreshTokenRequest, RefreshTokenResponse, ResetPasswordRequest, SignupRequest, SignupResponse, VerifyEmailRequest, VerifyEmailResponse, WorkOSAuthorizationRequest, WorkOSLoginRequest, WorkOSRefreshTokenRequest, WorkOSResetPasswordRequest, WorkOsVerifyEmailRequest
+from app.api.v1.schemas.user import WorkOSUserResponse
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.auth import AuthService
@@ -78,8 +80,26 @@ async def signup(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to create account: {e.message if hasattr(e, 'message') else str(e)}"
         )
+    except IntegrityError as e:
+        # Handle database integrity errors (e.g., duplicate email)
+        error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        # Check if it's a duplicate email constraint violation
+        if "ix_users_email" in error_str or "duplicate key" in error_str.lower() or "unique constraint" in error_str.lower():
+            logger.warning(f"Duplicate email during signup: {signup_request.email}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email address already exists. Please try logging in or resetting your password."
+            ) from e
+        
+        # Other integrity errors (shouldn't happen, but handle gracefully)
+        logger.error(f"Database integrity error during signup: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create account due to a data conflict"
+        ) from e
     except Exception as e:
-        logger.error(f"Unexpected error during signup: {e}", exc_info=True)
+        logger.error(f"Unexpected error during signup: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while creating your account"
@@ -206,8 +226,25 @@ async def verify_email(verify_email_request: VerifyEmailRequest, request: Reques
             user_agent=request.headers.get("user-agent") or ""
         )
         return await auth_service.verify_email(verify_email_request=workos_verify_email_request)
+    except BadRequestException as e:
+        error_code = getattr(e, "code", None)
+        error_description = getattr(e, "error_description", "") or ""
+        if error_code in {"invalid_code", "invalid_token"} or "invalid" in error_description:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification code."
+            ) from e
+        logger.error(f"Failed to verify email: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to verify email with the provided details."
+        ) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.error(f"Unexpected error during email verification: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while verifying email."
+        ) from e
 
 @router.post(
     "/forgot-password",
@@ -250,12 +287,48 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest) -> For
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send password reset email") from e
 
 @router.post(
-    "/authorize",
-    summary="Generate OAuth2 authorization URL",
-    
+    "/reset-password",
+    response_model=WorkOSUserResponse,
+    summary="Reset password",
     status_code=status.HTTP_200_OK
 )
-async def authorize(authorization_request: AuthorizationRequest) -> dict:
+async def reset_password(reset_password_request: ResetPasswordRequest) -> WorkOSUserResponse:
+    """
+    Reset a user's password.
+
+    Args:
+        reset_password_request (ResetPasswordRequest): Reset password request.
+
+    Returns:
+        WorkOSUserResponse: User information
+    """
+
+    auth_service = AuthService()
+    try:
+        workos_reset_password_request = WorkOSResetPasswordRequest(
+            token=reset_password_request.token,
+            new_password=reset_password_request.new_password
+        )
+        return await auth_service.reset_password(reset_password_request=workos_reset_password_request)
+    except BadRequestException as e:
+        error_code = getattr(e, 'code', None)
+        error_description = getattr(e, 'error_description', '')
+        if 'invalid_token' in error_description or error_code == 'invalid_token':
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset password token") from e
+        logger.error(f"Error during reset password: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reset password") from e
+    except Exception as e:
+        logger.error(f"Error during reset password: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reset password") from e
+
+
+@router.post(
+    "/authorize",
+    summary="Generate OAuth2 authorization URL",
+    response_model=AuthorizationUrlResponse,
+    status_code=status.HTTP_200_OK
+)
+async def authorize(authorization_request: AuthorizationRequest) -> AuthorizationUrlResponse:
     """
     Generate an OAuth2 authorization URL.
      The supported provider values are `GoogleOAuth`, `MicrosoftOAuth`, `GitHubOAuth`, and `AppleOAuth`. 
@@ -268,7 +341,7 @@ async def authorize(authorization_request: AuthorizationRequest) -> dict:
         authorization_request (AuthorizationRequest): Authorization request.
 
     Returns:
-        dict: Authorization URL.
+        AuthorizationUrlResponse: Authorization URL.
     """
     # Validate redirect_uri against whitelist (security requirement)
     if authorization_request.redirect_uri not in settings.allowed_redirect_uris_list:
@@ -364,4 +437,43 @@ async def callback(callback_request: OAuthCallbackRequest) -> LoginResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to exchange OAuth2 code"
+        ) from e
+
+@router.post(
+    "/refresh-token",
+    response_model=RefreshTokenResponse,
+    summary="Refresh a token",
+    status_code=status.HTTP_200_OK
+)
+async def refresh_token(refresh_token_request: RefreshTokenRequest, request: Request) -> RefreshTokenResponse:
+    """
+    Refresh a token.
+
+    Args:
+        refresh_token_request (RefreshTokenRequest): Refresh token request.
+
+    Returns:
+        RefreshTokenResponse: Access token and refresh token
+    """
+    auth_service = AuthService()
+    try:
+        workos_refresh_token_request = WorkOSRefreshTokenRequest(
+            refresh_token=refresh_token_request.refresh_token,
+            ip_address=request.client.host if request.client else "",
+            user_agent=request.headers.get("user-agent") or ""
+        )
+        return await auth_service.refresh_token(refresh_token_request=workos_refresh_token_request)
+    except BadRequestException as e:
+        error_code = getattr(e, 'code', None)
+        error_description = getattr(e, 'error_description', '')
+        if 'invalid_grant' in error_description or error_code == 'invalid_grant':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired refresh token. Please request a new refresh token."
+            ) from e
+    except Exception as e:
+        logger.error(f"Error refreshing token: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to refresh token"
         ) from e
