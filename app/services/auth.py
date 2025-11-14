@@ -113,15 +113,40 @@ class AuthService:
             **create_user_payload
         )
         
-        # Create user in database
-        user = User(
-            id=workos_user.id,
-            email=workos_user.email,
-            first_name=workos_user.first_name,
-            last_name=workos_user.last_name
-        )
-        db.add(user)
-        await db.flush()
+        # Create user in database with error handling
+        # If DB insert fails, we need to clean up the WorkOS user to prevent orphaned accounts
+        # Reference: https://workos.com/docs/reference/user-management/delete-user
+        try:
+            user = User(
+                id=workos_user.id,
+                email=workos_user.email,
+                first_name=workos_user.first_name,
+                last_name=workos_user.last_name
+            )
+            db.add(user)
+            await db.flush()
+        except Exception as db_error:
+            # Database operation failed - clean up WorkOS user to prevent orphaned account
+            # This prevents users from being locked out if DB insert fails (race condition, connection issue, etc.)
+            logger.warning(
+                f"Database insert failed after WorkOS user creation for {email}. "
+                f"Cleaning up WorkOS user {workos_user.id}. Error: {db_error}"
+            )
+            try:
+                await asyncio.to_thread(
+                    self.workos_client.user_management.delete_user,
+                    user_id=workos_user.id
+                )
+                logger.info(f"Successfully cleaned up WorkOS user {workos_user.id}")
+            except Exception as cleanup_error:
+                # Log cleanup failure but don't mask the original error
+                logger.error(
+                    f"Failed to clean up WorkOS user {workos_user.id} after DB failure. "
+                    f"Cleanup error: {cleanup_error}. Original error: {db_error}",
+                    exc_info=True
+                )
+            # Re-raise the original database error
+            raise
         
         logger.info(f"User created: {workos_user.id} ({email})")
         

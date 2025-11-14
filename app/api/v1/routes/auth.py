@@ -276,15 +276,44 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest) -> For
     try:
         return await auth_service.forgot_password(forgot_password_request=forgot_password_request)
     except BadRequestException as e:
+        # Handle validation errors (invalid email format)
         error_code = getattr(e, 'code', None)
-        error_description = getattr(e, 'error_description', '')
-        if 'invalid_email' in error_description or error_code == 'invalid_email':
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email address") from e
+        errors = getattr(e, 'errors', [])
+        
+        # Check for email validation errors
+        email_error_codes = ['email_required', 'invalid_email']
+        has_email_error = (
+            error_code in email_error_codes or
+            any(err.get('code') in email_error_codes for err in errors if isinstance(err, dict))
+        )
+        
+        if has_email_error:
+            logger.warning(f"Invalid email format in forgot password request: {forgot_password_request.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid email address format"
+            ) from e
+        
+        # Other BadRequestException errors
         logger.error(f"Error during forgot password: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send password reset email") from e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request"
+        ) from e
+    except NotFoundException:
+        # User not found - return generic success message to prevent email enumeration
+        # This is a security best practice: don't reveal if an email exists
+        logger.debug(f"Password reset requested for non-existent email: {forgot_password_request.email}")
+        return ForgotPasswordResponse(
+            message="If an account exists with this email address, a password reset link has been sent."
+        )
     except Exception as e:
-        logger.error(f"Error during forgot password: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send password reset email") from e
+        # Unexpected errors
+        logger.error(f"Unexpected error during forgot password: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send password reset email"
+        ) from e
 
 @router.post(
     "/reset-password",

@@ -95,12 +95,21 @@ async def get_current_user(
         return user
         
     except ValueError as e:
-        # Token validation failed (expired, invalid signature, etc.)
-        logger.warning(f"Token validation failed: {e}")
+        # Map error to RFC6750-compliant WWW-Authenticate header
+        msg = str(e)
+        # Default values
+        error = "invalid_token"
+        description = msg or "The access token is invalid"
+
+        if "expired" in msg.lower():
+            description = "The access token expired"
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"WWW-Authenticate": "Bearer"},
+            detail=msg,
+            headers={
+                "WWW-Authenticate": f'Bearer realm="api", error="{error}", error_description="{description}"'
+            },
         ) from e
     except NotFoundException:
         # User not found in WorkOS (shouldn't happen if token is valid)
