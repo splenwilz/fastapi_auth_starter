@@ -1,10 +1,33 @@
 [project]
 name = "fastapi-auth-starter"
 version = "0.1.0"
-description = "This is a FastAPI auth starter project that uses the WorkOS API to authenticate users."
+description = "A clean architecture FastAPI starter template with authentication, PostgreSQL, and Alembic migrations"
 readme = "README.md"
 # Vercel supports up to Python 3.12
 requires-python = ">=3.12"
+# PyPI metadata - update with your information
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+license = {text = "MIT"}
+keywords = ["fastapi", "starter", "template", "authentication", "postgresql", "alembic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: FastAPI",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+# Project URLs - update with your repository
+[project.urls]
+Homepage = "https://github.com/splenwilz/fastapi-auth-starter"
+Documentation = "https://github.com/splenwilz/fastapi-auth-starter#readme"
+Repository = "https://github.com/splenwilz/fastapi-auth-starter"
+Issues = "https://github.com/splenwilz/fastapi-auth-starter/issues"
 dependencies = [
     "asyncpg>=0.30.0",
     "authlib>=1.6.5",
@@ -17,6 +40,11 @@ dependencies = [
     "uvicorn[standard]>=0.38.0",
     "workos>=5.0.0",
 ]
+# CLI entry point for scaffolding new projects
+# Usage: fastapi-auth-starter init <project-name>
+[project.scripts]
+fastapi-auth-starter = "fastapi_auth_starter.cli:main"
+
 # Development dependencies (not needed for runtime on Vercel)
 # These are only needed for local development and migrations
 [project.optional-dependencies]
@@ -24,3 +52,26 @@ dev = [
     "alembic>=1.17.1",
     "psycopg2-binary>=2.9.11",
 ]
+
+# Build system configuration
+# Reference: https://peps.python.org/pep-0517/
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Package data configuration
+# Include template files when installing as a package
+# Reference: https://hatch.pypa.io/latest/config/build/#shared-data
+[tool.hatch.build.targets.wheel]
+packages = ["fastapi_auth_starter"]
+
+# Include template files as package data
+# These will be accessible via the package installation
+[tool.hatch.build.targets.wheel.shared-data]
+"app" = "app"
+"alembic" = "alembic"
+"alembic.ini" = "alembic.ini"
+"pyproject.toml" = "pyproject.toml"
+"README.md" = "README.md"
+"runtime.txt" = "runtime.txt"
+"vercel.json" = "vercel.json"
