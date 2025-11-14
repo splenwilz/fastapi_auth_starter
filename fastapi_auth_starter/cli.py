@@ -16,6 +16,7 @@ def get_template_files() -> list[Path]:
     """
     # Files and directories to include in the template
     # These are relative to the project root
+    # Note: fastapi_auth_starter/ is excluded - it's only for the package itself
     template_files = [
         "app",
         "alembic",
@@ -24,6 +25,7 @@ def get_template_files() -> list[Path]:
         "README.md",
         "runtime.txt",
         "vercel.json",
+        ".gitignore",  # Include .gitignore if it exists
     ]
     
     # Convert to Path objects
@@ -50,24 +52,62 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         dest_path = dest_dir / item
         
         if not source_path.exists():
-            print(f"Warning: Template file {item} not found, skipping...")
+            # Skip silently for optional files like .gitignore
+            if item != ".gitignore":
+                print(f"Warning: Template file {item} not found, skipping...")
+            continue
+        
+        # Explicitly exclude the package directory
+        if item == "fastapi_auth_starter":
             continue
         
         if source_path.is_dir():
-            # Copy directory recursively
-            shutil.copytree(source_path, dest_path, dirs_exist_ok=True)
+            # Copy directory recursively, excluding __pycache__ and .pyc files
+            shutil.copytree(
+                source_path, 
+                dest_path, 
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
+            )
         else:
             # Copy file
             shutil.copy2(source_path, dest_path)
     
-    # Customize pyproject.toml with new project name
+    # Create a clean pyproject.toml for standalone application
     pyproject_path = dest_dir / "pyproject.toml"
     if pyproject_path.exists():
-        content = pyproject_path.read_text()
-        # Replace package name with project name (sanitized)
+        # Read original to extract dependencies
+        original_content = pyproject_path.read_text()
+        
+        # Extract dependencies from original
+        import re
+        deps_match = re.search(r'dependencies = \[(.*?)\]', original_content, re.DOTALL)
+        dev_deps_match = re.search(r'\[project\.optional-dependencies\]\s+dev = \[(.*?)\]', original_content, re.DOTALL)
+        
+        dependencies = deps_match.group(1).strip() if deps_match else ""
+        dev_dependencies = dev_deps_match.group(1).strip() if dev_deps_match else ""
+        
+        # Sanitize project name
         sanitized_name = project_name.lower().replace(" ", "_").replace("-", "_")
-        content = content.replace('name = "fastapi-auth-starter"', f'name = "{sanitized_name}"')
-        pyproject_path.write_text(content)
+        
+        # Create clean pyproject.toml for standalone application
+        clean_content = f"""[project]
+name = "{sanitized_name}"
+version = "0.1.0"
+description = "FastAPI application"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+{dependencies}
+]
+
+# Development dependencies
+[project.optional-dependencies]
+dev = [
+{dev_dependencies}
+]
+"""
+        pyproject_path.write_text(clean_content)
     
     print(f"✓ Created new FastAPI project: {dest_dir}")
 
