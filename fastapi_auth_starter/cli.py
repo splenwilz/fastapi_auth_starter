@@ -128,6 +128,11 @@ def find_package_root() -> Path:
         if (dev_root / "app").exists() and (dev_root / "alembic").exists():
             return dev_root
         
+        # Debug: Print where we're looking
+        print(f"Debug: Package file location: {package_file}", file=sys.stderr)
+        print(f"Debug: Package directory: {package_file.parent}", file=sys.stderr)
+        print(f"Debug: Package parent (site-packages): {package_file.parent.parent}", file=sys.stderr)
+        
         # If installed as a package, template files are in shared-data
         # Hatchling places shared-data files in the package's installation directory
         # We need to find where the package is installed and look for shared-data
@@ -151,17 +156,48 @@ def find_package_root() -> Path:
             package_location = Path(__file__).parent
             package_parent = package_location.parent  # This is site-packages or similar
             
+            print(f"Debug: Checking package_parent: {package_parent}", file=sys.stderr)
+            print(f"Debug: app exists? {(package_parent / 'app').exists()}", file=sys.stderr)
+            print(f"Debug: alembic exists? {(package_parent / 'alembic').exists()}", file=sys.stderr)
+            
+            # List what's actually in site-packages for debugging
+            if package_parent.exists():
+                print(f"Debug: Contents of {package_parent}:", file=sys.stderr)
+                try:
+                    for item in sorted(package_parent.iterdir())[:30]:  # First 30 items
+                        item_type = "DIR" if item.is_dir() else "FILE"
+                        print(f"Debug:   {item_type}: {item.name}", file=sys.stderr)
+                        # If we find app or alembic, note it
+                        if item.name in ["app", "alembic"]:
+                            print(f"Debug:   *** FOUND {item.name} at {item} ***", file=sys.stderr)
+                except Exception as e:
+                    print(f"Debug: Error listing directory: {e}", file=sys.stderr)
+            
+            # Try to find app/alembic by searching recursively (limited depth)
+            if package_parent.exists():
+                print(f"Debug: Searching for app/ and alembic/ directories...", file=sys.stderr)
+                for item in package_parent.iterdir():
+                    if item.is_dir() and item.name in ["app", "alembic"]:
+                        # Found one, check if the other exists nearby
+                        other_name = "alembic" if item.name == "app" else "app"
+                        other_path = item.parent / other_name
+                        if other_path.exists():
+                            print(f"Debug: *** FOUND BOTH at {item.parent} ***", file=sys.stderr)
+                            return item.parent
+            
             # Hatchling shared-data places files at the site-packages level
             # So if package is at site-packages/fastapi_auth_starter/
             # Shared data is at site-packages/app/, site-packages/alembic/, etc.
             if package_parent.exists():
                 # Check if shared-data is at the site-packages level
                 if (package_parent / "app").exists() and (package_parent / "alembic").exists():
+                    print(f"Debug: Found template files at site-packages level: {package_parent}", file=sys.stderr)
                     return package_parent
                 
                 # Also check parent of site-packages (unlikely but possible)
                 if package_parent.parent.exists():
                     if (package_parent.parent / "app").exists() and (package_parent.parent / "alembic").exists():
+                        print(f"Debug: Found template files at parent level: {package_parent.parent}", file=sys.stderr)
                         return package_parent.parent
             
             # Check standard site-packages locations
