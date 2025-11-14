@@ -129,21 +129,64 @@ def find_package_root() -> Path:
             return dev_root
         
         # If installed as a package, template files are in shared-data
-        # Check site-packages for the package installation
+        # Hatchling places shared-data files in the package's installation directory
+        # We need to find where the package is installed and look for shared-data
         try:
             import site
-            for site_dir in site.getsitepackages():
-                # Check if package is installed here
-                package_dir = Path(site_dir) / "fastapi_auth_starter"
+            import sysconfig
+            
+            # Get all possible site-packages locations
+            site_dirs = site.getsitepackages()
+            if hasattr(site, 'getsitepackages'):
+                # Also check user site-packages
+                try:
+                    user_site = site.getusersitepackages()
+                    if user_site:
+                        site_dirs.append(user_site)
+                except AttributeError:
+                    pass
+            
+            # Also check where this package is actually installed
+            # The package is at fastapi_auth_starter/__init__.py, so parent is fastapi_auth_starter/
+            package_location = Path(__file__).parent
+            package_parent = package_location.parent  # This is site-packages or similar
+            
+            # Hatchling shared-data places files at the site-packages level
+            # So if package is at site-packages/fastapi_auth_starter/
+            # Shared data is at site-packages/app/, site-packages/alembic/, etc.
+            if package_parent.exists():
+                # Check if shared-data is at the site-packages level
+                if (package_parent / "app").exists() and (package_parent / "alembic").exists():
+                    return package_parent
+                
+                # Also check parent of site-packages (unlikely but possible)
+                if package_parent.parent.exists():
+                    if (package_parent.parent / "app").exists() and (package_parent.parent / "alembic").exists():
+                        return package_parent.parent
+            
+            # Check standard site-packages locations
+            for site_dir in site_dirs:
+                site_path = Path(site_dir)
+                
+                # Check if shared-data is in site-packages root
+                if (site_path / "app").exists() and (site_path / "alembic").exists():
+                    return site_path
+                
+                # Check in package directory
+                package_dir = site_path / "fastapi_auth_starter"
                 if package_dir.exists():
-                    # Shared data might be in the package directory or parent
-                    # Hatchling puts shared-data in the package root
-                    # So app/ and alembic/ should be in site_dir/fastapi_auth_starter/
+                    # Check parent (shared-data might be at site-packages level)
+                    if (site_path / "app").exists():
+                        return site_path
+                    # Or in package directory itself
                     if (package_dir / "app").exists():
                         return package_dir
-                    # Or they might be in the parent (site_dir)
-                    if (Path(site_dir) / "app").exists():
-                        return Path(site_dir)
+                    
+                    # Check parent of package (hatchling shared-data location)
+                    package_parent = package_dir.parent
+                    if (package_parent / "app").exists():
+                        return package_parent
+                        
         except Exception as e:
             # Log error but continue to fallback
             print(f"Warning: Error checking site-packages: {e}", file=sys.stderr)
@@ -184,6 +227,12 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
     print(f"Creating new FastAPI project '{project_name}' from template...")
     print(f"Source: {source_dir}")
     print(f"Destination: {target_dir}")
+    
+    # Debug: Verify source directory has required files
+    if not (source_dir / "app").exists():
+        print(f"Warning: 'app' directory not found at {source_dir / 'app'}", file=sys.stderr)
+    if not (source_dir / "alembic").exists():
+        print(f"Warning: 'alembic' directory not found at {source_dir / 'alembic'}", file=sys.stderr)
     
     # Copy template files
     copy_template_files(source_dir, target_dir, project_name)
