@@ -60,11 +60,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # Package data configuration
-# Include template files in the package itself
-# Reference: https://hatch.pypa.io/latest/config/build/#include
+# Include template files when installing as a package
+# Reference: https://hatch.pypa.io/latest/config/build/#shared-data
 [tool.hatch.build.targets.wheel]
 packages = ["fastapi_auth_starter"]
-# Include the templates directory in the package
-include = [
-    "fastapi_auth_starter/templates/**/*",
-]
+
+# Include template files as shared-data at site-packages root
+# Hatchling places these at the site-packages level when installed
+[tool.hatch.build.targets.wheel.shared-data]
+"fastapi_auth_starter/templates/app" = "app"
+"fastapi_auth_starter/templates/alembic" = "alembic"
+"fastapi_auth_starter/templates/alembic.ini" = "alembic.ini"
+"fastapi_auth_starter/templates/pyproject.toml" = "pyproject.toml"
+"fastapi_auth_starter/templates/README.md" = "README.md"
+"fastapi_auth_starter/templates/runtime.txt" = "runtime.txt"
+"fastapi_auth_starter/templates/vercel.json" = "vercel.json"
+"fastapi_auth_starter/templates/.gitignore" = ".gitignore"
