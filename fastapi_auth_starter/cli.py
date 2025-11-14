@@ -3,6 +3,7 @@ CLI tool for scaffolding new FastAPI projects from this starter template
 Reference: https://docs.python.org/3/library/argparse.html
 """
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -80,13 +81,100 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         # Read original to extract dependencies
         original_content = pyproject_path.read_text()
         
-        # Extract dependencies from original
-        import re
-        deps_match = re.search(r'dependencies = \[(.*?)\]', original_content, re.DOTALL)
-        dev_deps_match = re.search(r'\[project\.optional-dependencies\]\s+dev = \[(.*?)\]', original_content, re.DOTALL)
+        # Extract dependencies from original using a more robust method
+        # Handle dependencies with square brackets like uvicorn[standard]
+        def extract_array_content(content: str, key: str) -> list[str]:
+            """Extract array content by finding matching brackets."""
+            # Find the key and opening bracket
+            pattern = rf'{key}\s*=\s*\['
+            match = re.search(pattern, content)
+            if not match:
+                return []
+            
+            start_pos = match.end()
+            bracket_count = 1
+            pos = start_pos
+            lines = []
+            current_line = ""
+            in_string = False
+            string_char = None
+            
+            # Parse until we find the matching closing bracket
+            while pos < len(content) and bracket_count > 0:
+                char = content[pos]
+                prev_char = content[pos - 1] if pos > 0 else ''
+                
+                # Handle string literals (don't count brackets inside strings)
+                if char in ('"', "'") and prev_char != '\\':
+                    if not in_string:
+                        in_string = True
+                        string_char = char
+                    elif char == string_char:
+                        in_string = False
+                        string_char = None
+                    current_line += char
+                elif in_string:
+                    # Inside a string, just add the character
+                    current_line += char
+                elif char == '[':
+                    bracket_count += 1
+                    current_line += char
+                elif char == ']':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        # Found the closing bracket
+                        # Don't add the ']' to current_line, but save current_line if it has content
+                        if current_line.strip():
+                            lines.append(current_line.strip())
+                        break
+                    current_line += char
+                elif char == '\n':
+                    if current_line.strip():
+                        lines.append(current_line.strip())
+                    current_line = ""
+                else:
+                    current_line += char
+                
+                pos += 1
+            
+            # Clean up lines - remove comments, empty lines, and trailing commas
+            cleaned = []
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    # Remove trailing comma if present
+                    if line.endswith(','):
+                        line = line[:-1].strip()
+                    if line:
+                        cleaned.append(line)
+            
+            return cleaned
         
-        dependencies = deps_match.group(1).strip() if deps_match else ""
-        dev_dependencies = dev_deps_match.group(1).strip() if dev_deps_match else ""
+        # Extract dependencies
+        deps_lines = extract_array_content(original_content, 'dependencies')
+        dev_deps_lines = extract_array_content(original_content, 'dev')
+        
+        # Verify we got all dependencies (debug)
+        if len(deps_lines) < 9:  # Should have at least 9-10 dependencies
+            print(f"Warning: Only found {len(deps_lines)} dependencies, expected 10", file=sys.stderr)
+            print(f"Found: {deps_lines}", file=sys.stderr)
+        
+        # Format dependencies with proper indentation
+        # Ensure each dependency is properly quoted and formatted
+        formatted_deps = []
+        for dep in deps_lines:
+            dep = dep.strip()
+            # Ensure it's a quoted string
+            if not (dep.startswith('"') and dep.endswith('"')):
+                # Try to fix - add quotes if missing
+                if not dep.startswith('"'):
+                    dep = f'"{dep}'
+                if not dep.endswith('"'):
+                    dep = f'{dep}"'
+            formatted_deps.append(f'    {dep}')
+        
+        deps_formatted = '\n'.join(formatted_deps)
+        dev_deps_formatted = '\n'.join(f'    {dep}' for dep in dev_deps_lines if dep)
         
         # Sanitize project name
         sanitized_name = project_name.lower().replace(" ", "_").replace("-", "_")
@@ -99,13 +187,13 @@ description = "FastAPI application"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-{dependencies}
+{deps_formatted}
 ]
 
 # Development dependencies
 [project.optional-dependencies]
 dev = [
-{dev_dependencies}
+{dev_deps_formatted}
 ]
 """
         pyproject_path.write_text(clean_content)
@@ -225,9 +313,13 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
         print(f"  1. Copy .env.example to .env and configure your settings:")
         print(f"     cp .env.example .env")
         print(f"     # Then edit .env with your actual values")
-    print(f"  2. Run: uv sync")
-    print(f"  3. Run: uv run alembic upgrade head")
-    print(f"  4. Run: uv run uvicorn app.main:app --reload")
+    print(f"  2. Install dependencies (including dev dependencies for Alembic):")
+    print(f"     uv sync --extra dev")
+    print(f"     # This installs both runtime and dev dependencies")
+    print(f"  3. Run migrations:")
+    print(f"     uv run alembic upgrade head")
+    print(f"  4. Start the development server:")
+    print(f"     uv run uvicorn app.main:app --reload")
 
 
 def main() -> None:

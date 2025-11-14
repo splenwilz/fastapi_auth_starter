@@ -37,13 +37,25 @@ Install from a local directory:
 uv add /path/to/fastapi-auth-starter
 ```
 
-### Option 4: Install from PyPI
+### Option 4: Install from PyPI (Recommended)
 
-Once published to PyPI, you can install via:
+Once published to PyPI, you can install and use it:
 
 ```bash
-uv add fastapi-auth-starter
+# Install the package (required first step)
+uv pip install fastapi-auth-starter
+
+# Now you can use the CLI
 fastapi-auth-starter init my-new-project
+
+# Or initialize in current directory
+fastapi-auth-starter init .
+```
+
+**Quick Start (One-liner):**
+```bash
+# Install and initialize in one go
+uv pip install fastapi-auth-starter && fastapi-auth-starter init .
 ```
 
 **To publish to PyPI**, see [PUBLISHING.md](./PUBLISHING.md) for detailed instructions.

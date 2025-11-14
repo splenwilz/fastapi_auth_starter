@@ -2,6 +2,22 @@
 
 A clean architecture FastAPI project starter with PostgreSQL and Alembic migrations.
 
+## Quick Start
+
+**Create a new project from this template:**
+
+```bash
+# Install the package
+uv pip install fastapi-auth-starter
+
+# Initialize a new project
+fastapi-auth-starter init my-project
+# Or initialize in current directory
+fastapi-auth-starter init .
+```
+
+See [PACKAGING.md](./PACKAGING.md) for more installation options.
+
 ## Project Structure
 
 ```
@@ -96,6 +112,23 @@ uv run alembic revision --autogenerate -m "Initial migration"
 # Apply migrations
 uv run alembic upgrade head
 ```
+
+## Quick Start with Package (For New Projects)
+
+If you want to use this as a starter template for a new project:
+
+```bash
+# Install the package
+uv pip install fastapi-auth-starter
+
+# Initialize a new project
+fastapi-auth-starter init my-project
+
+# Or initialize in current directory
+fastapi-auth-starter init .
+```
+
+Then follow the setup steps in the new project directory.
 
 ## Running the Application
 
