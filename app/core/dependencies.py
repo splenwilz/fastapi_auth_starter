@@ -4,6 +4,7 @@ Reference: https://fastapi.tiangolo.com/tutorial/dependencies/
 """
 import asyncio
 import logging
+from functools import lru_cache
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from workos import WorkOSClient
@@ -18,6 +19,21 @@ logger = logging.getLogger(__name__)
 # HTTPBearer automatically extracts Bearer token from Authorization header
 # Reference: https://fastapi.tiangolo.com/reference/security/#fastapi.security.HTTPBearer
 security = HTTPBearer()
+
+
+@lru_cache()
+def get_auth_service() -> AuthService:
+    """
+    Get a singleton AuthService instance.
+    
+    Using lru_cache ensures the same AuthService instance is reused across requests,
+    which preserves the JWKS cache (_jwks_cache and _jwks_cache_expiry) at the
+    application level rather than request level. This avoids repeated JWKS API calls
+    to WorkOS and improves performance.
+    
+    Reference: https://docs.python.org/3/library/functools.html#functools.lru_cache
+    """
+    return AuthService()
 
 
 async def get_current_user(
@@ -43,7 +59,7 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if token is invalid or missing
     """
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     
     try:
         # Extract the token from credentials

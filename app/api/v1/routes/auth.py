@@ -8,7 +8,7 @@ from app.api.v1.schemas.auth import AuthorizationRequest, AuthorizationUrlRespon
 from app.api.v1.schemas.user import WorkOSUserResponse
 from app.core.config import settings
 from app.core.database import get_db
-from app.services.auth import AuthService
+from app.core.dependencies import get_auth_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ async def signup(
     Raises:
         HTTPException: 409 if email already exists, 400 for validation errors
     """
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     
     try:
         return await auth_service.signup(
@@ -61,19 +61,18 @@ async def signup(
         if hasattr(e, 'errors') and e.errors:
             for error in e.errors:
                 error_code = error.get('code', '')
-                error_message = error.get('message', '')
                 
                 if error_code == 'email_not_available':
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail="Email address is already registered. Please use a different email or try logging in."
-                    )
+                    ) from e
                 
                 if error_code == 'invalid_email':
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Invalid email address format"
-                    )
+                    ) from e
         
         # Generic WorkOS error
         raise HTTPException(
@@ -132,7 +131,7 @@ async def login(login_request: LoginRequest, request: Request) -> Union[LoginRes
 
 
     
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     
     try:
         workos_login_request = WorkOSLoginRequest(
@@ -217,7 +216,7 @@ async def verify_email(verify_email_request: VerifyEmailRequest, request: Reques
     Returns:
         VerifyEmailResponse
     """
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     try:
         workos_verify_email_request = WorkOsVerifyEmailRequest(
             pending_authentication_token=verify_email_request.pending_authentication_token,
@@ -272,7 +271,7 @@ async def forgot_password(forgot_password_request: ForgotPasswordRequest) -> For
     Raises:
         HTTPException: 400 if email format is invalid, 500 for other errors.
     """
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     try:
         return await auth_service.forgot_password(forgot_password_request=forgot_password_request)
     except BadRequestException as e:
@@ -332,7 +331,7 @@ async def reset_password(reset_password_request: ResetPasswordRequest) -> WorkOS
         WorkOSUserResponse: User information
     """
 
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     try:
         workos_reset_password_request = WorkOSResetPasswordRequest(
             token=reset_password_request.token,
@@ -408,7 +407,7 @@ async def authorize(authorization_request: AuthorizationRequest) -> Authorizatio
                 detail="Either 'provider' or 'connection_id' must be provided"
             ) 
     
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     try:
         authorization_url = await auth_service.generate_oauth2_authorization_url(workos_request)
         return {"authorization_url": authorization_url}
@@ -435,7 +434,7 @@ async def callback(callback_request: OAuthCallbackRequest) -> LoginResponse:
     Returns:
         LoginResponse: Access token and refresh token
     """
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     try:
         return await auth_service.oauth2_callback(code=callback_request.code)
     except BadRequestException as e:
@@ -484,7 +483,7 @@ async def refresh_token(refresh_token_request: RefreshTokenRequest, request: Req
     Returns:
         RefreshTokenResponse: Access token and refresh token
     """
-    auth_service = AuthService()
+    auth_service = get_auth_service()
     try:
         workos_refresh_token_request = WorkOSRefreshTokenRequest(
             refresh_token=refresh_token_request.refresh_token,
@@ -500,6 +499,12 @@ async def refresh_token(refresh_token_request: RefreshTokenRequest, request: Req
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired refresh token. Please request a new refresh token."
             ) from e
+            # Handle other BadRequestException cases
+        logger.error(f"Error refreshing token: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to refresh token"
+        ) from e
     except Exception as e:
         logger.error(f"Error refreshing token: {e}", exc_info=True)
         raise HTTPException(
