@@ -79,3 +79,18 @@ class UserUpdate(BaseModel):
     """
     first_name: Optional[str] = Field(None, max_length=255, description="User first name")
     last_name: Optional[str] = Field(None, max_length=255, description="User last name")
+
+
+class WorkOSUserResponse(BaseModel):
+    object: str = Field(..., description="Object")
+    id: str = Field(..., description="User ID")
+    email: str = Field(..., description="User email")
+    first_name: str | None = Field(None, description="User first name")
+    last_name: str | None = Field(None, description="User last name") 
+    email_verified: bool = Field(..., description="User email verified")
+    profile_picture_url: str | None = Field(None, description="User profile picture URL")
+    created_at: datetime = Field(..., description="User created at")
+    updated_at: datetime = Field(..., description="User updated at")
+
+    class Config:
+        from_attributes = True
