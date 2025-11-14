@@ -26,6 +26,7 @@ def get_template_files() -> list[Path]:
         "runtime.txt",
         "vercel.json",
         ".gitignore",  # Include .gitignore if it exists
+        ".env.example",  # Include .env.example template
     ]
     
     # Convert to Path objects
@@ -52,8 +53,8 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         dest_path = dest_dir / item
         
         if not source_path.exists():
-            # Skip silently for optional files like .gitignore
-            if item != ".gitignore":
+            # Skip silently for optional files like .gitignore and .env.example
+            if item not in [".gitignore", ".env.example"]:
                 print(f"Warning: Template file {item} not found, skipping...")
             continue
         
@@ -152,16 +153,46 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
     Initialize a new FastAPI project from this starter template.
     
     Args:
-        project_name: Name of the new project
-        target_dir: Target directory (defaults to current directory/project_name)
+        project_name: Name of the new project, or '.' to use current directory
+        target_dir: Target directory (defaults to current directory/project_name, or current directory if project_name is '.')
     """
-    if target_dir is None:
+    # Handle '.' as special case to initialize in current directory
+    if project_name == ".":
+        target_dir = Path.cwd()
+        # Use current directory name as project name, or a default
+        project_name = Path.cwd().name or "fastapi-project"
+    elif target_dir is None:
         target_dir = Path.cwd() / project_name
     
-    # Check if target directory already exists
-    if target_dir.exists():
-        print(f"Error: Directory {target_dir} already exists!")
-        sys.exit(1)
+    # Check if target directory already exists and is not empty (unless it's current dir with '.')
+    if target_dir.exists() and target_dir != Path.cwd():
+        # Check if directory is empty
+        try:
+            if any(target_dir.iterdir()):
+                print(f"Error: Directory {target_dir} already exists and is not empty!")
+                sys.exit(1)
+        except PermissionError:
+            print(f"Error: Permission denied accessing {target_dir}")
+            sys.exit(1)
+    
+    # If initializing in current directory, check if it's empty
+    if target_dir == Path.cwd():
+        try:
+            # Check for existing project files
+            existing_files = list(Path.cwd().iterdir())
+            # Filter out common non-project files
+            ignored = {'.git', '.venv', '__pycache__', '.DS_Store', '.idea', '.vscode'}
+            project_files = [f for f in existing_files if f.name not in ignored]
+            if project_files:
+                print(f"Warning: Current directory is not empty. Existing files will be preserved.")
+                print(f"Project files will be added to: {target_dir}")
+                response = input("Continue? (y/N): ")
+                if response.lower() != 'y':
+                    print("Aborted.")
+                    sys.exit(0)
+        except PermissionError:
+            print(f"Error: Permission denied accessing current directory")
+            sys.exit(1)
     
     # Find the template source directory
     source_dir = find_package_root()
@@ -185,11 +216,18 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
     
     print("\n✓ Project created successfully!")
     print(f"\nNext steps:")
-    print(f"  1. cd {target_dir}")
-    print(f"  2. Create a .env file with your configuration")
-    print(f"  3. Run: uv sync")
-    print(f"  4. Run: uv run alembic upgrade head")
-    print(f"  5. Run: uv run uvicorn app.main:app --reload")
+    if target_dir != Path.cwd():
+        print(f"  1. cd {target_dir}")
+        print(f"  2. Copy .env.example to .env and configure your settings:")
+        print(f"     cp .env.example .env")
+        print(f"     # Then edit .env with your actual values")
+    else:
+        print(f"  1. Copy .env.example to .env and configure your settings:")
+        print(f"     cp .env.example .env")
+        print(f"     # Then edit .env with your actual values")
+    print(f"  2. Run: uv sync")
+    print(f"  3. Run: uv run alembic upgrade head")
+    print(f"  4. Run: uv run uvicorn app.main:app --reload")
 
 
 def main() -> None:
@@ -204,6 +242,7 @@ def main() -> None:
 Examples:
   fastapi-auth-starter init my-api
   fastapi-auth-starter init my-api --dir /path/to/projects
+  fastapi-auth-starter init .              # Initialize in current directory
         """
     )
     
@@ -213,7 +252,7 @@ Examples:
     init_parser = subparsers.add_parser("init", help="Initialize a new FastAPI project")
     init_parser.add_argument(
         "project_name",
-        help="Name of the new project"
+        help="Name of the new project, or '.' to initialize in current directory"
     )
     init_parser.add_argument(
         "--dir",
