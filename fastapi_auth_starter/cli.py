@@ -79,7 +79,11 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
     pyproject_path = dest_dir / "pyproject.toml"
     if pyproject_path.exists():
         # Read original to extract dependencies
-        original_content = pyproject_path.read_text()
+        try:
+            original_content = pyproject_path.read_text(encoding='utf-8')
+        except Exception as e:
+            print(f"Warning: Could not read pyproject.toml: {e}", file=sys.stderr)
+            original_content = ""
         
         # Extract dependencies from original using a more robust method
         # Handle dependencies with square brackets like uvicorn[standard]
@@ -159,22 +163,82 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
             print(f"Warning: Only found {len(deps_lines)} dependencies, expected 10", file=sys.stderr)
             print(f"Found: {deps_lines}", file=sys.stderr)
         
+        # Validate extracted dependencies - check for common issues
+        for i, dep in enumerate(deps_lines):
+            dep_stripped = dep.strip()
+            # Check for uvicorn specifically - must have full string with version
+            if 'uvicorn' in dep_stripped:
+                if not dep_stripped.endswith('"'):
+                    print(f"Error: uvicorn dependency is truncated: {repr(dep_stripped)}", file=sys.stderr)
+                    # Try to find and fix - look for the pattern
+                    if 'uvicorn[standard' in dep_stripped and '>=0.38.0' not in dep_stripped:
+                        # This is the broken case - fix it
+                        fixed = dep_stripped
+                        if not fixed.endswith('"'):
+                            fixed = f'{fixed}>=0.38.0"'
+                        deps_lines[i] = fixed
+                        print(f"  Fixed to: {repr(fixed)}", file=sys.stderr)
+                elif '>=0.38.0' not in dep_stripped:
+                    print(f"Error: uvicorn dependency missing version: {repr(dep_stripped)}", file=sys.stderr)
+            # Check if any dependency is missing closing quote
+            if dep_stripped.startswith('"') and not dep_stripped.endswith('"'):
+                print(f"Error: Dependency {i+1} missing closing quote: {repr(dep_stripped)}", file=sys.stderr)
+        
+        # Fallback: If extraction failed or uvicorn is broken, use known good dependencies
+        KNOWN_DEPS = [
+            '"asyncpg>=0.30.0"',
+            '"authlib>=1.6.5"',
+            '"fastapi>=0.121.0"',
+            '"greenlet>=3.2.4"',
+            '"httpx>=0.28.1"',
+            '"pydantic>=2.0.0"',
+            '"pydantic-settings>=2.11.0"',
+            '"sqlalchemy>=2.0.44"',
+            '"uvicorn[standard]>=0.38.0"',
+            '"workos>=5.0.0"',
+        ]
+        KNOWN_DEV_DEPS = [
+            '"alembic>=1.17.1"',
+            '"psycopg2-binary>=2.9.11"',
+        ]
+        
+        # Check if we need to use fallback
+        use_fallback = False
+        if len(deps_lines) < 9:
+            use_fallback = True
+            print("Warning: Using fallback dependencies due to extraction issues", file=sys.stderr)
+        else:
+            # Check if uvicorn is broken
+            uvicorn_dep = next((d for d in deps_lines if 'uvicorn' in d), None)
+            if uvicorn_dep and ('>=0.38.0' not in uvicorn_dep or not uvicorn_dep.strip().endswith('"')):
+                use_fallback = True
+                print("Warning: Using fallback dependencies due to broken uvicorn extraction", file=sys.stderr)
+        
+        if use_fallback:
+            deps_lines = KNOWN_DEPS
+            dev_deps_lines = KNOWN_DEV_DEPS
+        
         # Format dependencies with proper indentation
-        # Ensure each dependency is properly quoted and formatted
+        # Preserve the exact dependency strings as extracted (they should already be quoted)
         formatted_deps = []
         for dep in deps_lines:
             dep = dep.strip()
-            # Ensure it's a quoted string
+            # Ensure it's properly quoted (add quotes if missing, but don't double-quote)
             if not (dep.startswith('"') and dep.endswith('"')):
-                # Try to fix - add quotes if missing
-                if not dep.startswith('"'):
-                    dep = f'"{dep}'
-                if not dep.endswith('"'):
-                    dep = f'{dep}"'
-            formatted_deps.append(f'    {dep}')
+                dep = f'"{dep}"'
+            formatted_deps.append(f'    {dep},')
         
         deps_formatted = '\n'.join(formatted_deps)
-        dev_deps_formatted = '\n'.join(f'    {dep}' for dep in dev_deps_lines if dep)
+        
+        # Format dev dependencies similarly
+        formatted_dev_deps = []
+        for dep in dev_deps_lines:
+            dep = dep.strip()
+            if not (dep.startswith('"') and dep.endswith('"')):
+                dep = f'"{dep}"'
+            formatted_dev_deps.append(f'    {dep},')
+        
+        dev_deps_formatted = '\n'.join(formatted_dev_deps)
         
         # Sanitize project name
         sanitized_name = project_name.lower().replace(" ", "_").replace("-", "_")
@@ -316,8 +380,9 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
     print(f"  2. Install dependencies (including dev dependencies for Alembic):")
     print(f"     uv sync --extra dev")
     print(f"     # This installs both runtime and dev dependencies")
-    print(f"  3. Run migrations:")
+    print(f"  3. (Optional) Run example migrations to create users/tasks tables:")
     print(f"     uv run alembic upgrade head")
+    print(f"     # Note: These are example migrations. Delete alembic/versions/ if starting fresh.")
     print(f"  4. Start the development server:")
     print(f"     uv run uvicorn app.main:app --reload")
 

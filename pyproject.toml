@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-auth-starter"
-version = "0.1.6"
+version = "0.1.7"
 description = "A clean architecture FastAPI starter template with authentication, PostgreSQL, and Alembic migrations"
 readme = "README.md"
 # Vercel supports up to Python 3.12
