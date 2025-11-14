@@ -71,7 +71,7 @@ If you prefer to clone and customize manually:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/fastapi-auth-starter.git my-project
+git clone https://github.com/splenwilz/fastapi-auth-starter.git my-project
 cd my-project
 
 # Remove git history (optional)
@@ -95,7 +95,7 @@ uv run uvicorn app.main:app --reload
 
 When installed as a package, the following structure is available:
 
-```
+```text
 fastapi_auth_starter/
 ├── __init__.py
 └── cli.py              # CLI tool for scaffolding

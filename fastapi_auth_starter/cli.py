@@ -6,7 +6,6 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-from importlib import resources
 
 
 def get_template_files() -> list[Path]:
@@ -90,16 +89,8 @@ def find_package_root() -> Path:
             return dev_root
         
         # If installed as a package, template files are in shared-data
-        # Try to find them using importlib.resources
+        # Check site-packages for the package installation
         try:
-            import importlib.resources
-            # Try to access a known file from the package
-            package = importlib.resources.files("fastapi_auth_starter")
-            # Look for shared data files
-            # In hatchling, shared-data files are at the package root level
-            # But we need to check the actual installation location
-            
-            # Alternative: check site-packages for the package
             import site
             for site_dir in site.getsitepackages():
                 # Check if package is installed here
@@ -113,16 +104,17 @@ def find_package_root() -> Path:
                     # Or they might be in the parent (site_dir)
                     if (Path(site_dir) / "app").exists():
                         return Path(site_dir)
-        except Exception:
-            pass
+        except Exception as e:
+            # Log error but continue to fallback
+            print(f"Warning: Error checking site-packages: {e}", file=sys.stderr)
         
-        # Fallback: try to find in common installation locations
+        # Fallback: use development root
         # This handles editable installs and other scenarios
         return dev_root
         
     except Exception as e:
-        print(f"Error finding package root: {e}")
-        # Final fallback
+        print(f"Error finding package root: {e}", file=sys.stderr)
+        # Final fallback: use current file's parent's parent
         return Path(__file__).resolve().parent.parent
 
 

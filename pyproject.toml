@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 # PyPI metadata - update with your information
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Godswill William", email = "godswill.wilz@gmail.com"},
 ]
 license = {text = "MIT"}
 keywords = ["fastapi", "starter", "template", "authentication", "postgresql", "alembic"]
