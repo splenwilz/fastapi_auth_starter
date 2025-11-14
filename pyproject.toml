@@ -22,12 +22,6 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
 ]
-# Project URLs - update with your repository
-[project.urls]
-Homepage = "https://github.com/splenwilz/fastapi-auth-starter"
-Documentation = "https://github.com/splenwilz/fastapi-auth-starter#readme"
-Repository = "https://github.com/splenwilz/fastapi-auth-starter"
-Issues = "https://github.com/splenwilz/fastapi-auth-starter/issues"
 dependencies = [
     "asyncpg>=0.30.0",
     "authlib>=1.6.5",
@@ -40,6 +34,12 @@ dependencies = [
     "uvicorn[standard]>=0.38.0",
     "workos>=5.0.0",
 ]
+# Project URLs - update with your repository
+[project.urls]
+Homepage = "https://github.com/splenwilz/fastapi-auth-starter"
+Documentation = "https://github.com/splenwilz/fastapi-auth-starter#readme"
+Repository = "https://github.com/splenwilz/fastapi-auth-starter"
+Issues = "https://github.com/splenwilz/fastapi-auth-starter/issues"
 # CLI entry point for scaffolding new projects
 # Usage: fastapi-auth-starter init <project-name>
 [project.scripts]
