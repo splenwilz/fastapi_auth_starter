@@ -30,8 +30,7 @@ Or initialize in the current directory:
 fastapi-auth-starter init .
 ```
 
-**Note:** The `fastapi-auth-starter` CLI tool is a scaffolding utility, not a runtime dependency. If you install it in your project's virtual environment and then run `uv sync`, it will be removed (this is expected behavior). Install it globally or use `uvx` to avoid this.
-
+**Note:** The `fastapi-auth-starter` CLI tool is a scaffolding utility, not a runtime dependency. If you install it in your project's virtual environment and then run `uv sync`, it will be removed (this is expected behavior). Install it globally or use `uvx` to avoid this. 
 ## Project Structure
 
 ```
