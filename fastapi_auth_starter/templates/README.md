@@ -89,8 +89,10 @@ CREATE DATABASE fastapi_auth;
 
 ### 4. Run Migrations
 
+Create your initial migration based on your database models:
+
 ```bash
-# Create initial migration (if needed)
+# Create initial migration
 uv run alembic revision --autogenerate -m "Initial migration"
 
 # Apply migrations

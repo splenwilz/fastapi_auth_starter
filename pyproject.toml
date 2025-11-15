@@ -1,13 +1,18 @@
 [project]
 name = "fastapi-auth-starter"
-version = "0.1.11"
-description = "A clean architecture FastAPI starter template with authentication, PostgreSQL, and Alembic migrations"
+version = "0.1.12"
+description = "A clean architecture FastAPI starter template with authentication (WorkOS), PostgreSQL, and Alembic migrations"
 readme = "README.md"
 # Vercel supports up to Python 3.12
 requires-python = ">=3.12"
 # PyPI metadata - update with your information
 authors = [
-    {name = "Godswill William", email = "godswill.wilz@gmail.com"},
+    {name = "Godswill William", email = "godswill.williamsz@gmail.com"},
+]
+# Some tools prefer maintainers field - include both for maximum compatibility
+# Reference: https://peps.python.org/pep-0621/#authors-maintainers
+maintainers = [
+    {name = "Godswill William", email = "godswill.williamsz@gmail.com"},
 ]
 license = {text = "MIT"}
 keywords = ["fastapi", "starter", "template", "authentication", "postgresql", "alembic"]

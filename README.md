@@ -1,26 +1,36 @@
 # FastAPI Auth Starter
 
-A clean architecture FastAPI project starter with PostgreSQL and Alembic migrations.
+A clean architecture FastAPI project starter with authentication (WorkOS), PostgreSQL and Alembic migrations.
 
 ## Quick Start
 
 **Create a new project from this template:**
 
-```bash
-# Install the package (globally or in a separate environment)
-uv pip install fastapi-auth-starter
-# Or use uvx to run without installing:
-# uvx fastapi-auth-starter init my-project
+Install the package (globally or in a separate environment):
 
-# Initialize a new project
+```bash
+uv pip install fastapi-auth-starter
+```
+
+Or use `uvx` to run without installing:
+
+```bash
+uvx fastapi-auth-starter init my-project
+```
+
+Initialize a new project in a new directory:
+
+```bash
 fastapi-auth-starter init my-project
-# Or initialize in current directory
+```
+
+Or initialize in the current directory:
+
+```bash
 fastapi-auth-starter init .
 ```
 
 **Note:** The `fastapi-auth-starter` CLI tool is a scaffolding utility, not a runtime dependency. If you install it in your project's virtual environment and then run `uv sync`, it will be removed (this is expected behavior). Install it globally or use `uvx` to avoid this.
-
-See [PACKAGING.md](./PACKAGING.md) for more installation options.
 
 ## Project Structure
 
@@ -50,6 +60,7 @@ fastapi_auth_starter/
 
 - ✅ Clean architecture with separation of concerns
 - ✅ FastAPI with async SQLAlchemy
+- ✅ WorkOS authentication integration
 - ✅ PostgreSQL database support
 - ✅ Alembic for database migrations
 - ✅ Health check endpoint
@@ -93,9 +104,13 @@ VERSION=0.1.0
 - The application uses `asyncpg` for async operations, but Alembic uses `psycopg2` for migrations (sync driver)
 - All sensitive configuration should be in `.env` file, not hardcoded
 
-### 3. Initialize Database
+### 3. Set Up Database
 
-First, ensure PostgreSQL is running and create the database:
+You can use PostgreSQL from any source - local, cloud providers (AWS RDS, Neon, Supabase, etc.), or managed services.
+
+**Option A: Local PostgreSQL**
+
+If using a local PostgreSQL instance, create the database:
 
 ```bash
 createdb fastapi_auth
@@ -107,32 +122,27 @@ Or using PostgreSQL client:
 CREATE DATABASE fastapi_auth;
 ```
 
+**Option B: Cloud/Managed Database**
+
+If using a cloud provider (AWS RDS, Neon, Supabase, Railway, etc.):
+- Create a PostgreSQL database through your provider's dashboard
+- Copy the connection string provided by your provider
+- Update the `DATABASE_URL` in your `.env` file with the connection string
+
+**Important:** 
+- The `DATABASE_URL` in your `.env` file should point to your database (local or cloud)
+- Ensure the database is accessible from where you're running the application
+- The connection string format should be: `postgresql+asyncpg://user:password@host:port/database`
+
 ### 4. Run Migrations
 
 ```bash
-# Create initial migration (if needed)
+# Create initial migration
 uv run alembic revision --autogenerate -m "Initial migration"
 
 # Apply migrations
 uv run alembic upgrade head
 ```
-
-## Quick Start with Package (For New Projects)
-
-If you want to use this as a starter template for a new project:
-
-```bash
-# Install the package
-uv pip install fastapi-auth-starter
-
-# Initialize a new project
-fastapi-auth-starter init my-project
-
-# Or initialize in current directory
-fastapi-auth-starter init .
-```
-
-Then follow the setup steps in the new project directory.
 
 ## Running the Application
 
