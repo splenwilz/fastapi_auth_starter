@@ -5,7 +5,7 @@ Reference: https://alembic.sqlalchemy.org/en/latest/tutorial.html
 """
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
@@ -83,6 +83,27 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Auto-fix: If alembic_version table exists but references a deleted migration,
+        # drop it so users can start fresh without manual intervention
+        # Reference: https://alembic.sqlalchemy.org/en/latest/branches.html#working-with-multiple-bases
+        try:
+            result = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+            row = result.fetchone()
+            if row:
+                current_rev = row[0]
+                # Check if the revision exists in the versions directory
+                from alembic.script import ScriptDirectory  # type: ignore[import-untyped]
+                script = ScriptDirectory.from_config(config)
+                try:
+                    script.get_revision(current_rev)
+                except Exception:
+                    # Revision doesn't exist - drop the table to start fresh
+                    connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+                    connection.commit()
+        except Exception:
+            # Table doesn't exist or other error - that's fine, continue
+            pass
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

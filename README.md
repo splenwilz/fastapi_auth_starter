@@ -12,12 +12,6 @@ Install the package (globally or in a separate environment):
 uv pip install fastapi-auth-starter
 ```
 
-Or use `uvx` to run without installing:
-
-```bash
-uvx fastapi-auth-starter init my-project
-```
-
 Initialize a new project in a new directory:
 
 ```bash
@@ -30,7 +24,7 @@ Or initialize in the current directory:
 fastapi-auth-starter init .
 ```
 
-**Note:** The `fastapi-auth-starter` CLI tool is a scaffolding utility, not a runtime dependency. If you install it in your project's virtual environment and then run `uv sync`, it will be removed (this is expected behavior). Install it globally or use `uvx` to avoid this. 
+**Note:** The `fastapi-auth-starter` CLI tool is a scaffolding utility, not a runtime dependency. If you install it in your project's virtual environment and then run `uv sync`, it will be removed (this is expected behavior). Install it globally to avoid this. 
 ## Project Structure
 
 ```
@@ -134,6 +128,8 @@ If using a cloud provider (AWS RDS, Neon, Supabase, Railway, etc.):
 - The connection string format should be: `postgresql+asyncpg://user:password@host:port/database`
 
 ### 4. Run Migrations
+
+Create your initial migration:
 
 ```bash
 # Create initial migration

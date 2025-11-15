@@ -417,9 +417,9 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
     print(f"     # This installs both runtime and dev dependencies")
     print(f"     # Note: If you installed fastapi-auth-starter in this venv, uv sync will")
     print(f"     #       remove it (expected - it's a CLI tool, not a project dependency)")
-    print(f"  3. (Optional) Run example migrations to create users/tasks tables:")
+    print(f"  3. Create and run your initial migration:")
+    print(f"     uv run alembic revision --autogenerate -m \"Initial migration\"")
     print(f"     uv run alembic upgrade head")
-    print(f"     # Note: These are example migrations. Delete alembic/versions/ if starting fresh.")
     print(f"  4. Start the development server:")
     print(f"     uv run uvicorn app.main:app --reload")
 
