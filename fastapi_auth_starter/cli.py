@@ -167,40 +167,41 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         # Validate extracted dependencies - check for common issues
         for i, dep in enumerate(deps_lines):
             dep_stripped = dep.strip()
+            # Remove quotes if present for validation
+            dep_no_quotes = dep_stripped
+            if dep_stripped.startswith('"') and dep_stripped.endswith('"'):
+                dep_no_quotes = dep_stripped[1:-1]
+            
             # Check for uvicorn specifically - must have full string with version
-            if 'uvicorn' in dep_stripped:
-                if not dep_stripped.endswith('"'):
-                    print(f"Error: uvicorn dependency is truncated: {repr(dep_stripped)}", file=sys.stderr)
-                    # Try to find and fix - look for the pattern
-                    if 'uvicorn[standard' in dep_stripped and '>=0.38.0' not in dep_stripped:
-                        # This is the broken case - fix it
-                        fixed = dep_stripped
-                        if not fixed.endswith('"'):
-                            fixed = f'{fixed}>=0.38.0"'
+            if 'uvicorn' in dep_no_quotes:
+                if '>=0.38.0' not in dep_no_quotes:
+                    print(f"Error: uvicorn dependency missing version: {repr(dep_stripped)}", file=sys.stderr)
+                    # Try to fix - add version if missing
+                    if 'uvicorn[standard' in dep_no_quotes:
+                        fixed = f'uvicorn[standard]>=0.38.0'
                         deps_lines[i] = fixed
                         print(f"  Fixed to: {repr(fixed)}", file=sys.stderr)
-                elif '>=0.38.0' not in dep_stripped:
-                    print(f"Error: uvicorn dependency missing version: {repr(dep_stripped)}", file=sys.stderr)
-            # Check if any dependency is missing closing quote
+            # Check if any dependency is missing closing quote (only if it starts with quote)
             if dep_stripped.startswith('"') and not dep_stripped.endswith('"'):
                 print(f"Error: Dependency {i+1} missing closing quote: {repr(dep_stripped)}", file=sys.stderr)
         
         # Fallback: If extraction failed or uvicorn is broken, use known good dependencies
+        # These are stored without quotes - formatting code will add them
         KNOWN_DEPS = [
-            '"asyncpg>=0.30.0"',
-            '"authlib>=1.6.5"',
-            '"fastapi>=0.121.0"',
-            '"greenlet>=3.2.4"',
-            '"httpx>=0.28.1"',
-            '"pydantic>=2.0.0"',
-            '"pydantic-settings>=2.11.0"',
-            '"sqlalchemy>=2.0.44"',
-            '"uvicorn[standard]>=0.38.0"',
-            '"workos>=5.0.0"',
+            'asyncpg>=0.30.0',
+            'authlib>=1.6.5',
+            'fastapi>=0.121.0',
+            'greenlet>=3.2.4',
+            'httpx>=0.28.1',
+            'pydantic>=2.0.0',
+            'pydantic-settings>=2.11.0',
+            'sqlalchemy>=2.0.44',
+            'uvicorn[standard]>=0.38.0',
+            'workos>=5.0.0',
         ]
         KNOWN_DEV_DEPS = [
-            '"alembic>=1.17.1"',
-            '"psycopg2-binary>=2.9.11"',
+            'alembic>=1.17.1',
+            'psycopg2-binary>=2.9.11',
         ]
         
         # Check if we need to use fallback
@@ -211,13 +212,23 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         else:
             # Check if uvicorn is broken
             uvicorn_dep = next((d for d in deps_lines if 'uvicorn' in d), None)
-            if uvicorn_dep and ('>=0.38.0' not in uvicorn_dep or not uvicorn_dep.strip().endswith('"')):
-                use_fallback = True
-                print("Warning: Using fallback dependencies due to broken uvicorn extraction", file=sys.stderr)
-            # Also check if any dependency is missing quotes (malformed)
+            if uvicorn_dep:
+                uvicorn_stripped = uvicorn_dep.strip()
+                # Remove quotes if present for validation
+                if uvicorn_stripped.startswith('"') and uvicorn_stripped.endswith('"'):
+                    uvicorn_stripped = uvicorn_stripped[1:-1]
+                # Check if version is missing or dependency is truncated
+                if '>=0.38.0' not in uvicorn_stripped or not uvicorn_stripped:
+                    use_fallback = True
+                    print("Warning: Using fallback dependencies due to broken uvicorn extraction", file=sys.stderr)
+            # Also check if any dependency is malformed (empty or contains invalid characters)
             for dep in deps_lines:
                 dep_stripped = dep.strip()
-                if dep_stripped and not (dep_stripped.startswith('"') and dep_stripped.endswith('"')):
+                # Remove quotes if present for validation
+                if dep_stripped.startswith('"') and dep_stripped.endswith('"'):
+                    dep_stripped = dep_stripped[1:-1]
+                # Check if dependency is empty or doesn't look like a valid package spec
+                if not dep_stripped or ' ' in dep_stripped:
                     use_fallback = True
                     print(f"Warning: Using fallback due to malformed dependency: {repr(dep_stripped[:50])}", file=sys.stderr)
                     break
@@ -228,18 +239,22 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         
         # Format dependencies with proper indentation
         # Ensure each dependency is properly quoted and has a trailing comma
+        # Reference: https://toml.io/en/v1.0.0#array
         formatted_deps = []
         for dep in deps_lines:
             dep = dep.strip()
-            # Remove any existing trailing comma (we'll add it back)
+            # Remove any existing trailing comma (we'll add it back consistently)
             if dep.endswith(','):
                 dep = dep[:-1].strip()
-            # Ensure it's properly quoted (add quotes if missing, but don't double-quote)
-            if not (dep.startswith('"') and dep.endswith('"')):
-                dep = f'"{dep}"'
-            # Always add trailing comma
+            # Remove any existing quotes to avoid double-quoting
+            if dep.startswith('"') and dep.endswith('"'):
+                dep = dep[1:-1]  # Remove outer quotes
+            # Ensure it's properly quoted
+            dep = f'"{dep}"'
+            # Always add trailing comma for proper TOML array formatting
             formatted_deps.append(f'    {dep},')
         
+        # Join with newlines to ensure each dependency is on its own line
         deps_formatted = '\n'.join(formatted_deps)
         
         # Format dev dependencies similarly
@@ -249,11 +264,15 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
             # Remove any existing trailing comma
             if dep.endswith(','):
                 dep = dep[:-1].strip()
-            if not (dep.startswith('"') and dep.endswith('"')):
-                dep = f'"{dep}"'
-            # Always add trailing comma
+            # Remove any existing quotes to avoid double-quoting
+            if dep.startswith('"') and dep.endswith('"'):
+                dep = dep[1:-1]  # Remove outer quotes
+            # Ensure it's properly quoted
+            dep = f'"{dep}"'
+            # Always add trailing comma for proper TOML array formatting
             formatted_dev_deps.append(f'    {dep},')
         
+        # Join with newlines to ensure each dependency is on its own line
         dev_deps_formatted = '\n'.join(formatted_dev_deps)
         
         # Sanitize project name
