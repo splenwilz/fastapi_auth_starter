@@ -146,9 +146,10 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
             for line in lines:
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    # Remove trailing comma if present
+                    # Remove trailing comma if present (but preserve the dependency string)
                     if line.endswith(','):
                         line = line[:-1].strip()
+                    # Ensure we have a valid dependency string
                     if line:
                         cleaned.append(line)
             
@@ -213,19 +214,30 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
             if uvicorn_dep and ('>=0.38.0' not in uvicorn_dep or not uvicorn_dep.strip().endswith('"')):
                 use_fallback = True
                 print("Warning: Using fallback dependencies due to broken uvicorn extraction", file=sys.stderr)
+            # Also check if any dependency is missing quotes (malformed)
+            for dep in deps_lines:
+                dep_stripped = dep.strip()
+                if dep_stripped and not (dep_stripped.startswith('"') and dep_stripped.endswith('"')):
+                    use_fallback = True
+                    print(f"Warning: Using fallback due to malformed dependency: {repr(dep_stripped[:50])}", file=sys.stderr)
+                    break
         
         if use_fallback:
             deps_lines = KNOWN_DEPS
             dev_deps_lines = KNOWN_DEV_DEPS
         
         # Format dependencies with proper indentation
-        # Preserve the exact dependency strings as extracted (they should already be quoted)
+        # Ensure each dependency is properly quoted and has a trailing comma
         formatted_deps = []
         for dep in deps_lines:
             dep = dep.strip()
+            # Remove any existing trailing comma (we'll add it back)
+            if dep.endswith(','):
+                dep = dep[:-1].strip()
             # Ensure it's properly quoted (add quotes if missing, but don't double-quote)
             if not (dep.startswith('"') and dep.endswith('"')):
                 dep = f'"{dep}"'
+            # Always add trailing comma
             formatted_deps.append(f'    {dep},')
         
         deps_formatted = '\n'.join(formatted_deps)
@@ -234,8 +246,12 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         formatted_dev_deps = []
         for dep in dev_deps_lines:
             dep = dep.strip()
+            # Remove any existing trailing comma
+            if dep.endswith(','):
+                dep = dep[:-1].strip()
             if not (dep.startswith('"') and dep.endswith('"')):
                 dep = f'"{dep}"'
+            # Always add trailing comma
             formatted_dev_deps.append(f'    {dep},')
         
         dev_deps_formatted = '\n'.join(formatted_dev_deps)
