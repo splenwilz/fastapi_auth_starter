@@ -7,14 +7,18 @@ A clean architecture FastAPI project starter with PostgreSQL and Alembic migrati
 **Create a new project from this template:**
 
 ```bash
-# Install the package
+# Install the package (globally or in a separate environment)
 uv pip install fastapi-auth-starter
+# Or use uvx to run without installing:
+# uvx fastapi-auth-starter init my-project
 
 # Initialize a new project
 fastapi-auth-starter init my-project
 # Or initialize in current directory
 fastapi-auth-starter init .
 ```
+
+**Note:** The `fastapi-auth-starter` CLI tool is a scaffolding utility, not a runtime dependency. If you install it in your project's virtual environment and then run `uv sync`, it will be removed (this is expected behavior). Install it globally or use `uvx` to avoid this.
 
 See [PACKAGING.md](./PACKAGING.md) for more installation options.
 

@@ -81,10 +81,6 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
         # Read original to extract dependencies
         try:
             original_content = pyproject_path.read_text(encoding='utf-8')
-            print(f"[DEBUG] Read pyproject.toml, length: {len(original_content)} chars", file=sys.stderr)
-            # Show first few lines for debugging
-            first_lines = '\n'.join(original_content.split('\n')[:15])
-            print(f"[DEBUG] First 15 lines of original:\n{first_lines}", file=sys.stderr)
         except Exception as e:
             print(f"Warning: Could not read pyproject.toml: {e}", file=sys.stderr)
             original_content = ""
@@ -160,16 +156,10 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
             return cleaned
         
         # Extract dependencies
-        print(f"[DEBUG] Extracting dependencies from original content...", file=sys.stderr)
         deps_lines = extract_array_content(original_content, 'dependencies')
         dev_deps_lines = extract_array_content(original_content, 'dev')
         
-        print(f"[DEBUG] Extracted {len(deps_lines)} dependencies", file=sys.stderr)
-        print(f"[DEBUG] Raw extracted dependencies: {deps_lines}", file=sys.stderr)
-        print(f"[DEBUG] Extracted {len(dev_deps_lines)} dev dependencies", file=sys.stderr)
-        print(f"[DEBUG] Raw extracted dev dependencies: {dev_deps_lines}", file=sys.stderr)
-        
-        # Verify we got all dependencies (debug)
+        # Verify we got all dependencies
         if len(deps_lines) < 9:  # Should have at least 9-10 dependencies
             print(f"Warning: Only found {len(deps_lines)} dependencies, expected 10", file=sys.stderr)
             print(f"Found: {deps_lines}", file=sys.stderr)
@@ -244,70 +234,46 @@ def copy_template_files(source_dir: Path, dest_dir: Path, project_name: str) -> 
                     break
         
         if use_fallback:
-            print(f"[DEBUG] Using fallback dependencies", file=sys.stderr)
             deps_lines = KNOWN_DEPS
             dev_deps_lines = KNOWN_DEV_DEPS
-        else:
-            print(f"[DEBUG] Using extracted dependencies (not fallback)", file=sys.stderr)
-        
-        print(f"[DEBUG] Final deps_lines before formatting: {deps_lines}", file=sys.stderr)
-        print(f"[DEBUG] Final dev_deps_lines before formatting: {dev_deps_lines}", file=sys.stderr)
         
         # Format dependencies with proper indentation
         # Ensure each dependency is properly quoted and has a trailing comma
         # Reference: https://toml.io/en/v1.0.0#array
-        print(f"[DEBUG] Formatting dependencies...", file=sys.stderr)
         formatted_deps = []
-        for i, dep in enumerate(deps_lines):
-            original_dep = dep
+        for dep in deps_lines:
             dep = dep.strip()
-            print(f"[DEBUG]   Processing dep {i+1}: original={repr(original_dep)}, after strip={repr(dep)}", file=sys.stderr)
             # Remove any existing trailing comma (we'll add it back consistently)
             if dep.endswith(','):
                 dep = dep[:-1].strip()
-                print(f"[DEBUG]     Removed trailing comma, now: {repr(dep)}", file=sys.stderr)
             # Remove any existing quotes to avoid double-quoting
             if dep.startswith('"') and dep.endswith('"'):
                 dep = dep[1:-1]  # Remove outer quotes
-                print(f"[DEBUG]     Removed quotes, now: {repr(dep)}", file=sys.stderr)
             # Ensure it's properly quoted
             dep = f'"{dep}"'
             # Always add trailing comma for proper TOML array formatting
-            formatted_line = f'    {dep},'
-            formatted_deps.append(formatted_line)
-            print(f"[DEBUG]     Final formatted line: {repr(formatted_line)}", file=sys.stderr)
+            formatted_deps.append(f'    {dep},')
         
         # Join with newlines to ensure each dependency is on its own line
         deps_formatted = '\n'.join(formatted_deps)
-        print(f"[DEBUG] Final deps_formatted (joined):\n{deps_formatted}", file=sys.stderr)
-        print(f"[DEBUG] deps_formatted contains {deps_formatted.count(chr(10))} newlines", file=sys.stderr)
         
         # Format dev dependencies similarly
-        print(f"[DEBUG] Formatting dev dependencies...", file=sys.stderr)
         formatted_dev_deps = []
-        for i, dep in enumerate(dev_deps_lines):
-            original_dep = dep
+        for dep in dev_deps_lines:
             dep = dep.strip()
-            print(f"[DEBUG]   Processing dev dep {i+1}: original={repr(original_dep)}, after strip={repr(dep)}", file=sys.stderr)
             # Remove any existing trailing comma
             if dep.endswith(','):
                 dep = dep[:-1].strip()
-                print(f"[DEBUG]     Removed trailing comma, now: {repr(dep)}", file=sys.stderr)
             # Remove any existing quotes to avoid double-quoting
             if dep.startswith('"') and dep.endswith('"'):
                 dep = dep[1:-1]  # Remove outer quotes
-                print(f"[DEBUG]     Removed quotes, now: {repr(dep)}", file=sys.stderr)
             # Ensure it's properly quoted
             dep = f'"{dep}"'
             # Always add trailing comma for proper TOML array formatting
-            formatted_line = f'    {dep},'
-            formatted_dev_deps.append(formatted_line)
-            print(f"[DEBUG]     Final formatted line: {repr(formatted_line)}", file=sys.stderr)
+            formatted_dev_deps.append(f'    {dep},')
         
         # Join with newlines to ensure each dependency is on its own line
         dev_deps_formatted = '\n'.join(formatted_dev_deps)
-        print(f"[DEBUG] Final dev_deps_formatted (joined):\n{dev_deps_formatted}", file=sys.stderr)
-        print(f"[DEBUG] dev_deps_formatted contains {dev_deps_formatted.count(chr(10))} newlines", file=sys.stderr)
         
         # Sanitize project name
         sanitized_name = project_name.lower().replace(" ", "_").replace("-", "_")
@@ -329,20 +295,7 @@ dev = [
 {dev_deps_formatted}
 ]
 """
-        print(f"[DEBUG] Final clean_content length: {len(clean_content)} chars", file=sys.stderr)
-        print(f"[DEBUG] Final clean_content:\n{clean_content}", file=sys.stderr)
-        print(f"[DEBUG] Writing to: {pyproject_path}", file=sys.stderr)
         pyproject_path.write_text(clean_content)
-        print(f"[DEBUG] File written successfully", file=sys.stderr)
-        
-        # Verify what was actually written
-        try:
-            written_content = pyproject_path.read_text(encoding='utf-8')
-            print(f"[DEBUG] Verification: Read back {len(written_content)} chars", file=sys.stderr)
-            deps_section = written_content.split('dependencies = [')[1].split(']')[0] if 'dependencies = [' in written_content else "NOT FOUND"
-            print(f"[DEBUG] Verification: dependencies section from written file:\n{deps_section}", file=sys.stderr)
-        except Exception as e:
-            print(f"[DEBUG] Verification failed: {e}", file=sys.stderr)
     
     print(f"✓ Created new FastAPI project: {dest_dir}")
 
@@ -462,6 +415,8 @@ def init_project(project_name: str, target_dir: Path | None = None) -> None:
     print(f"  2. Install dependencies (including dev dependencies for Alembic):")
     print(f"     uv sync --extra dev")
     print(f"     # This installs both runtime and dev dependencies")
+    print(f"     # Note: If you installed fastapi-auth-starter in this venv, uv sync will")
+    print(f"     #       remove it (expected - it's a CLI tool, not a project dependency)")
     print(f"  3. (Optional) Run example migrations to create users/tasks tables:")
     print(f"     uv run alembic upgrade head")
     print(f"     # Note: These are example migrations. Delete alembic/versions/ if starting fresh.")
