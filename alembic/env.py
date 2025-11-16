@@ -3,11 +3,15 @@ Alembic environment configuration
 Handles database migrations with SQLAlchemy
 Reference: https://alembic.sqlalchemy.org/en/latest/tutorial.html
 """
+import logging
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 # Import Base for models
 from app.core.database import Base
@@ -116,23 +120,39 @@ def run_migrations_online() -> None:
         # Auto-fix: If alembic_version table exists but references a deleted migration,
         # drop it so users can start fresh without manual intervention
         # Reference: https://alembic.sqlalchemy.org/en/latest/branches.html#working-with-multiple-bases
+        # Use a savepoint to handle errors gracefully without aborting the main transaction
+        logger.debug("Checking alembic_version table for orphaned migration references...")
+        savepoint = connection.begin_nested()
         try:
             result = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
             row = result.fetchone()
             if row:
                 current_rev = row[0]
+                logger.debug(f"Found alembic_version table with revision: {current_rev}")
                 # Check if the revision exists in the versions directory
                 from alembic.script import ScriptDirectory  # type: ignore[import-untyped]
                 script = ScriptDirectory.from_config(config)
                 try:
                     script.get_revision(current_rev)
-                except Exception:
+                    logger.debug(f"Revision {current_rev} exists in versions directory - no action needed")
+                    # Revision exists, no need to drop table
+                    savepoint.commit()
+                except Exception as e:
+                    logger.warning(
+                        f"Revision {current_rev} not found in versions directory. "
+                        f"Dropping alembic_version table to start fresh. Error: {e}"
+                    )
                     # Revision doesn't exist - drop the table to start fresh
                     connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
-                    connection.commit()
-        except Exception:
-            # Table doesn't exist or other error - that's fine, continue
-            pass
+                    savepoint.commit()
+                    logger.info("Successfully dropped alembic_version table")
+            else:
+                logger.debug("alembic_version table exists but is empty - no action needed")
+                savepoint.commit()
+        except Exception as e:
+            # Table doesn't exist or other error - rollback savepoint and continue
+            logger.debug(f"alembic_version table check failed (this is normal for new databases): {e}")
+            savepoint.rollback()
 
         context.configure(
             connection=connection,
