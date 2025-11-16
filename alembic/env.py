@@ -9,9 +9,34 @@ from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
-# Import application settings and Base
-from app.core.config import settings
+# Import Base for models
 from app.core.database import Base
+
+# Lazy import settings - only load when DATABASE_URL is needed
+# This prevents errors when .env file doesn't exist yet
+def get_settings():
+    """
+    Lazy load settings to avoid validation errors before .env is configured.
+    
+    Catches validation errors and provides helpful instructions.
+    """
+    try:
+        from app.core.config import settings
+        return settings
+    except Exception as e:
+        import sys
+        print(
+            "\n❌ Error: Environment variables not configured. Please set up your .env file first:\n"
+            "   1. Copy .env.example to .env: cp .env.example .env\n"
+            "   2. Edit .env and configure required variables:\n"
+            "      - DATABASE_URL (PostgreSQL connection string)\n"
+            "      - WORKOS_API_KEY\n"
+            "      - WORKOS_CLIENT_ID\n"
+            "      - WORKOS_ALLOWED_REDIRECT_URIS\n"
+            "   3. Then run this command again\n",
+            file=sys.stderr
+        )
+        raise
 
 # Import all models here so Alembic can detect them for autogenerate
 # As models are added, import them here
@@ -29,11 +54,16 @@ if config.config_file_name is not None:
 # Convert asyncpg URL to psycopg2 URL for Alembic (Alembic uses sync drivers)
 # Reference: https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls
 if not config.get_main_option("sqlalchemy.url"):
-    # Convert asyncpg URL to psycopg2 URL (sync driver for migrations)
-    db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-    # Escape % for ConfigParser (double % to prevent interpolation)
-    db_url = db_url.replace("%", "%%")
-    config.set_main_option("sqlalchemy.url", db_url)
+    try:
+        settings = get_settings()
+        # Convert asyncpg URL to psycopg2 URL (sync driver for migrations)
+        db_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+        # Escape % for ConfigParser (double % to prevent interpolation)
+        db_url = db_url.replace("%", "%%")
+        config.set_main_option("sqlalchemy.url", db_url)
+    except Exception as e:
+        # Settings not configured yet - error message already shown by get_settings()
+        raise
 
 # Set target_metadata for autogenerate support
 # This tells Alembic what models exist in the application
