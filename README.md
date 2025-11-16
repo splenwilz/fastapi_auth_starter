@@ -170,6 +170,8 @@ Expected response:
 
 ## Development
 
+> **For package maintainers:** See [DEV.md](DEV.md) for detailed development workflow, including how to sync changes from the root project to the template using the `sync_to_template.py` script.
+
 ### Adding New Routes
 
 1. Create a new route file in `app/api/v1/routes/`
